@@ -1,0 +1,30 @@
+<header>
+    <script src="https://unpkg.com/dropzone@5/dist/min/dropzone.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/dropzone@5/dist/min/dropzone.min.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="index.css" />
+    <script>
+        let files = [];
+        Dropzone.options.myDropzone = {
+            paramName: "file",                 // The name that will be used to transfer the file
+            maxFilesize: 10,                      // MB
+            acceptedFiles: "image/png",
+            accept: function(file, done) {
+                files.push(file.name);
+                done();
+            },
+        };
+        function downloadFiles(){
+            if (files.length <= 0) {
+                return;
+            }
+            window.open(`/download?fileNames=${files.join(",")}`);
+            files = [];
+        }
+    </script>
+</header>
+<body>
+    <form action="/upload" class="dropzone" id="my-dropzone"></form>
+    <center>
+        全部处理完成后点击此处<a href="javascript:void(0)" onclick="downloadFiles()">下载</a>
+    </center>
+</body>
