@@ -1,0 +1,30 @@
+{
+  "name": "import_res",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "3.5",
+    "fs-extra": "^8.1.0",
+    "klaw-sync": "^6.0.0",
+    "lodash": "^4.17.15",
+    "md5": "^2.3.0",
+    "sharp": "^0.29.3"
+  },
+  "devDependencies": {
+    "@types/bluebird": "^3.5.30",
+    "@types/fs-extra": "^8.1.0",
+    "@types/klaw-sync": "^6.0.0",
+    "@types/lodash": "^4.14.149",
+    "@types/md5": "^2.3.1",
+    "@types/sharp": "^0.29.5",
+    "node": "^17.3.0",
+    "typescript": "^3.8.3"
+  },
+  "bin": {
+    "gen_slice9_img": "node dist/index.js"
+  },
+  "scripts": {
+    "gen_slice9_img": "node dist/index.js"
+  }
+}
