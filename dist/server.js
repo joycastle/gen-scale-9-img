@@ -49,6 +49,13 @@ app.get('/download', (req, res) => {
         return;
     }
     const fileNames = fileNamesStr.split(",");
+    if (fileNames.length <= 0) {
+        return;
+    }
+    if (fileNames.length === 1) {
+        res.download(`uploads/${originFileNameMap.get(fileNames[0])}`, fileNames[0]);
+        return;
+    }
     const zipDatas = [];
     fileNames.forEach((o) => {
         zipDatas.push({
