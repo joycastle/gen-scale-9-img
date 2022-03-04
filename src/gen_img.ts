@@ -67,8 +67,13 @@ async function generateImg(inputFilePath: string, outputFilePath: string) {
     });
     // console.log(colDatas);
     const targetColData = _.maxBy(colDatas, (o) => o.ended - o.start);
-    const targetColStart = targetColData.start;
-    const targetColEnded = targetColData.ended;
+    let targetColStart = targetColData.start;
+    let targetColEnded = targetColData.ended;
+    if (targetColEnded === targetColStart) {
+        const midCol = Math.floor(imgWidth / 2)
+        targetColStart = midCol - 1;
+        targetColEnded = midCol;
+    }
 
     // 行处理
     const chunkHeight = Math.ceil(imgHeight / cpuCount);
@@ -101,8 +106,13 @@ async function generateImg(inputFilePath: string, outputFilePath: string) {
     });
     // console.log(rowDatas);
     const targetRowData = _.maxBy(rowDatas, (o) => o.ended - o.start);
-    const targetRowStart = targetRowData.start;
-    const targetRowEnded = targetRowData.ended;
+    let targetRowStart = targetRowData.start;
+    let targetRowEnded = targetRowData.ended;
+    if (targetRowEnded === targetRowStart) {
+        const midRow = Math.floor(imgHeight / 2)
+        targetRowStart = midRow - 1;
+        targetRowEnded = midRow;
+    }
 
     // 截9宫图
     const slice1Buffer = await inputFileSharp.extract({ left: 0, top: 0, width: targetColStart + 1, height: targetRowStart + 1 })
