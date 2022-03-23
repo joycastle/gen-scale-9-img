@@ -18,6 +18,7 @@ const md5 = require("md5");
 const os = require("os");
 const path = require("path");
 const sharp = require("sharp");
+const childProcess = require("child_process");
 const inputValue = process.argv[2];
 const outputValue = process.argv[3];
 if (_.isNil(inputValue) || inputValue === outputValue) {
@@ -33,6 +34,10 @@ const stepSize = 1;
 function generateImg(inputFilePath, outputFilePath) {
     return __awaiter(this, void 0, void 0, function* () {
         console.time(inputFilePath);
+        childProcess.execSync(`
+        convert -trim ${inputFilePath} ${inputFilePath}.tmp
+        mv ${inputFilePath}.tmp ${inputFilePath}
+    `, { stdio: "inherit" });
         // 计算宽度高度
         const inputFileSharp = sharp(inputFilePath);
         const metadata = yield inputFileSharp.metadata();

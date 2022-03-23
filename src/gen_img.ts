@@ -8,6 +8,7 @@ import * as md5 from "md5";
 import * as os from "os";
 import * as path from "path";
 import * as sharp from "sharp";
+import * as childProcess from "child_process";
 
 const inputValue = process.argv[2];
 const outputValue = process.argv[3];
@@ -27,6 +28,10 @@ const stepSize = 1;
 
 async function generateImg(inputFilePath: string, outputFilePath: string) {
     console.time(inputFilePath);
+    childProcess.execSync(`
+        convert -trim ${inputFilePath} ${inputFilePath}.tmp
+        mv ${inputFilePath}.tmp ${inputFilePath}
+    `, {stdio: "inherit"});
 
     // 计算宽度高度
     const inputFileSharp = sharp(inputFilePath);
