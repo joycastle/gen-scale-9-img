@@ -30,15 +30,18 @@ async function generateImg(inputFilePath: string, outputFilePath: string) {
     console.time(inputFilePath);
 
     // 图片 trim
+    fs.removeSync(`${inputFilePath}.png`);
     fs.removeSync(`${inputFilePath}.tmp`);
-    await Bluebird.fromCallback((callback) => trimImage(inputFilePath, `${inputFilePath}.tmp`, {top: true, right: true, bottom: true, left: true}, (err) => {
+    fs.moveSync(inputFilePath, `${inputFilePath}.png`, {overwrite: true});
+    await Bluebird.fromCallback((callback) => trimImage(`${inputFilePath}.png`, `${inputFilePath}.tmp`, {top: true, right: true, bottom: true, left: true}, (err) => {
         if (!err) {
             callback(null);
         } else {
-            callback(new Error("trim image error"));
+            callback(new Error(err));
         }
     }));
     await Bluebird.delay(100);
+    fs.removeSync(`${inputFilePath}.png`);
     fs.moveSync(`${inputFilePath}.tmp`, inputFilePath, {overwrite: true});
 
     // 计算宽度高度
