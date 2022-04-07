@@ -8,7 +8,7 @@ import * as md5 from "md5";
 import * as os from "os";
 import * as path from "path";
 import * as sharp from "sharp";
-import * as childProcess from "child_process";
+import * as trimImage from "trim-image";
 
 const inputValue = process.argv[2];
 const outputValue = process.argv[3];
@@ -28,10 +28,18 @@ const stepSize = 1;
 
 async function generateImg(inputFilePath: string, outputFilePath: string) {
     console.time(inputFilePath);
-    childProcess.execSync(`
-        convert -trim ${inputFilePath} ${inputFilePath}.tmp
-        mv ${inputFilePath}.tmp ${inputFilePath}
-    `, {stdio: "inherit"});
+
+    // 图片 trim
+    fs.removeSync(`${inputFilePath}.tmp`);
+    await Bluebird.fromCallback((callback) => trimImage(inputFilePath, `${inputFilePath}.tmp`, {top: true, right: true, bottom: true, left: true}, (err) => {
+        if (!err) {
+            callback(null);
+        } else {
+            callback(new Error("trim image error"));
+        }
+    }));
+    await Bluebird.delay(100);
+    fs.moveSync(`${inputFilePath}.tmp`, inputFilePath, {overwrite: true});
 
     // 计算宽度高度
     const inputFileSharp = sharp(inputFilePath);
