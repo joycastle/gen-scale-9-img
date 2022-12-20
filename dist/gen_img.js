@@ -147,54 +147,33 @@ function generateImg(inputFilePath, outputFilePath) {
         const slice4Buffer = yield inputFileSharp.extract({ left: targetColEnded, top: targetRowEnded, width: imgWidth - targetColEnded, height: imgHeight - targetRowEnded })
             .toFormat(sharp.format.png)
             .toBuffer();
-        // 创建黑块图
-        const blackHBuffer = yield sharp({
-            create: { width: 2, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } }
-        })
-            .toFormat(sharp.format.png)
-            .toBuffer();
-        const blackVBuffer = yield sharp({
-            create: { width: 1, height: 2, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } }
-        })
-            .toFormat(sharp.format.png)
-            .toBuffer();
         // 创建底图
-        const outputImgWidth = targetColStart + 1 + imgWidth - targetColEnded + 1;
-        const outputImgHeight = targetRowStart + 1 + imgHeight - targetRowEnded + 1;
+        const outputImgWidth = targetColStart + 1 + imgWidth - targetColEnded;
+        const outputImgHeight = targetRowStart + 1 + imgHeight - targetRowEnded;
         const outputFileSharp = sharp({
             create: { width: outputImgWidth, height: outputImgHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
         });
         // 合成图
         yield outputFileSharp.composite([
             {
-                input: blackHBuffer,
+                input: slice1Buffer,
+                left: 0,
+                top: 0,
+            },
+            {
+                input: slice2Buffer,
                 left: targetColStart + 1,
                 top: 0,
             },
             {
-                input: blackVBuffer,
+                input: slice3Buffer,
                 left: 0,
                 top: targetRowStart + 1,
             },
             {
-                input: slice1Buffer,
-                left: 1,
-                top: 1,
-            },
-            {
-                input: slice2Buffer,
-                left: targetColStart + 2,
-                top: 1,
-            },
-            {
-                input: slice3Buffer,
-                left: 1,
-                top: targetRowStart + 2,
-            },
-            {
                 input: slice4Buffer,
-                left: targetColStart + 2,
-                top: targetRowStart + 2,
+                left: targetColStart + 1,
+                top: targetRowStart + 1,
             },
         ])
             .toFormat(sharp.format.png)
