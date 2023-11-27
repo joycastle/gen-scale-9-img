@@ -29,7 +29,7 @@ app.post('/upload', upload.array('file'), (req, res) => {
             }
         }
     });
-    if ((0, lodash_1.isArray)(req.files)) {
+    if (lodash_1.isArray(req.files)) {
         req.files.forEach((o) => {
             if (o.mimetype !== "image/png") {
                 return;

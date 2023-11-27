@@ -148,8 +148,8 @@ function generateImg(inputFilePath, outputFilePath) {
             .toFormat(sharp.format.png)
             .toBuffer();
         // 创建底图
-        const outputImgWidth = targetColStart + 1 + imgWidth - targetColEnded;
-        const outputImgHeight = targetRowStart + 1 + imgHeight - targetRowEnded;
+        const outputImgWidth = targetColStart + 1 + imgWidth - targetColEnded + 4;
+        const outputImgHeight = targetRowStart + 1 + imgHeight - targetRowEnded + 4;
         const outputFileSharp = sharp({
             create: { width: outputImgWidth, height: outputImgHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
         });
@@ -157,23 +157,23 @@ function generateImg(inputFilePath, outputFilePath) {
         yield outputFileSharp.composite([
             {
                 input: slice1Buffer,
-                left: 0,
-                top: 0,
+                left: 2,
+                top: 2,
             },
             {
                 input: slice2Buffer,
-                left: targetColStart + 1,
-                top: 0,
+                left: targetColStart + 3,
+                top: 2,
             },
             {
                 input: slice3Buffer,
-                left: 0,
-                top: targetRowStart + 1,
+                left: 2,
+                top: targetRowStart + 3,
             },
             {
                 input: slice4Buffer,
-                left: targetColStart + 1,
-                top: targetRowStart + 1,
+                left: targetColStart + 3,
+                top: targetRowStart + 3,
             },
         ])
             .toFormat(sharp.format.png)
