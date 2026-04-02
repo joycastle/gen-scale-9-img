@@ -1,4 +1,4 @@
-export function alphaBleeding(imageData: ImageData, iterations: number = 64): ImageData {
+export function alphaBleeding(imageData: ImageData, iterations: number = 32): ImageData {
   const { width, height } = imageData
   const data = new Uint8ClampedArray(imageData.data)
   const hasColor = new Uint8Array(width * height)

@@ -5,7 +5,7 @@ export interface SliceRegion {
   bottom: number
 }
 
-export interface BoardConfig {
+export interface BorderConfig {
   top: number
   bottom: number
   left: number
@@ -22,7 +22,7 @@ export interface ImageItem {
   tolerance: number
 }
 
-export function sliceRegionToBoard(region: SliceRegion, imgWidth: number, imgHeight: number): BoardConfig {
+export function sliceRegionToBorder(region: SliceRegion, imgWidth: number, imgHeight: number): BorderConfig {
   return {
     top: region.top,
     bottom: imgHeight - region.bottom,

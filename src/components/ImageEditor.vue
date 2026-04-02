@@ -1,18 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick, computed } from 'vue'
-import type { SliceRegion, ImageItem } from '../types'
+import type { SliceRegion } from '../types'
 import { useDragInteraction } from '../composables/useDragInteraction'
+import { useAppStore } from '../composables/useAppStore'
 
-const props = defineProps<{
-  item: ImageItem | null
-  sliceRegion: SliceRegion | null
-  dark: boolean
-}>()
-
-const emit = defineEmits<{
-  'update:sliceRegion': [region: SliceRegion]
-  recompute: [tolerance: number]
-}>()
+const store = useAppStore()
+const item = computed(() => store.currentItem.value)
+const sliceRegion = computed(() => store.currentRegion.value)
+const dark = computed(() => store.isDark.value)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -29,50 +24,50 @@ const RULER_SIZE = 24
 
 // Editor controls
 const localTolerance = ref(0)
-const boardTop = ref(0)
-const boardBottom = ref(0)
-const boardLeft = ref(0)
-const boardRight = ref(0)
+const borderTop = ref(0)
+const borderBottom = ref(0)
+const borderLeft = ref(0)
+const borderRight = ref(0)
 
-watch(() => props.item?.id, () => {
-  if (props.item) {
-    localTolerance.value = props.item.tolerance
+watch(() => item.value?.id, () => {
+  if (item.value) {
+    localTolerance.value = item.value.tolerance
     fitToView()
   }
 })
 
-watch(() => props.sliceRegion, (r) => {
-  if (r && props.item) {
-    const img = props.item.image
-    boardTop.value = r.top
-    boardBottom.value = img.naturalHeight - r.bottom
-    boardLeft.value = r.left
-    boardRight.value = img.naturalWidth - r.right
+watch(() => sliceRegion.value, (r) => {
+  if (r && item.value) {
+    const img = item.value.image
+    borderTop.value = r.top
+    borderBottom.value = img.naturalHeight - r.bottom
+    borderLeft.value = r.left
+    borderRight.value = img.naturalWidth - r.right
   }
 }, { immediate: true, deep: true })
 
-function applyBoardInput() {
-  if (!props.item) return
-  const img = props.item.image
+function applyBorderInput() {
+  if (!item.value) return
+  const img = item.value.image
   const region: SliceRegion = {
-    left: Math.max(0, boardLeft.value),
-    right: Math.min(img.naturalWidth - 1, img.naturalWidth - boardRight.value),
-    top: Math.max(0, boardTop.value),
-    bottom: Math.min(img.naturalHeight - 1, img.naturalHeight - boardBottom.value),
+    left: Math.max(0, borderLeft.value),
+    right: Math.min(img.naturalWidth - 1, img.naturalWidth - borderRight.value),
+    top: Math.max(0, borderTop.value),
+    bottom: Math.min(img.naturalHeight - 1, img.naturalHeight - borderBottom.value),
   }
   if (region.right < region.left) region.right = region.left
   if (region.bottom < region.top) region.bottom = region.top
-  emit('update:sliceRegion', region)
+  store.updateRegion(region)
 }
 
 function onToleranceChange() {
-  if (!props.item) return
-  props.item.tolerance = localTolerance.value
-  emit('recompute', localTolerance.value)
+  if (!item.value) return
+  item.value.tolerance = localTolerance.value
+  store.recompute(localTolerance.value)
 }
 
 function onRecompute() {
-  emit('recompute', localTolerance.value)
+  store.recompute(localTolerance.value)
 }
 
 // Compute canvas -> image transform
@@ -87,22 +82,22 @@ function getOffset() {
 }
 
 function getImageSize() {
-  if (!props.item) return null
-  return { width: props.item.image.naturalWidth, height: props.item.image.naturalHeight }
+  if (!item.value) return null
+  return { width: item.value.image.naturalWidth, height: item.value.image.naturalHeight }
 }
 
 const drag = useDragInteraction(
   () => canvasRef.value,
-  () => props.sliceRegion,
+  () => sliceRegion.value,
   getImageSize,
   getScale,
   getOffset,
-  (updated) => emit('update:sliceRegion', updated),
+  (updated) => store.updateRegion(updated),
 )
 
 // Zoom
 function onWheel(e: WheelEvent) {
-  if (!props.item) return
+  if (!item.value) return
   e.preventDefault()
   const rect = containerRef.value!.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
@@ -125,12 +120,12 @@ function onWheel(e: WheelEvent) {
 // Fit to view
 function fitToView() {
   const container = containerRef.value
-  const item = props.item
-  if (!container || !item) return
+  const currentImg = item.value
+  if (!container || !currentImg) return
   const cw = container.clientWidth - RULER_SIZE - 20
   const ch = container.clientHeight - RULER_SIZE - 20
-  const iw = item.image.naturalWidth
-  const ih = item.image.naturalHeight
+  const iw = currentImg.image.naturalWidth
+  const ih = currentImg.image.naturalHeight
   const scale = Math.min(cw / iw, ch / ih, 4)
   zoomLevel.value = scale
   panOffset.value = {
@@ -144,12 +139,12 @@ function fitToView() {
 let checkerPattern: CanvasPattern | null = null
 let checkerDark = false
 function getCheckerPattern(ctx: CanvasRenderingContext2D): CanvasPattern {
-  if (checkerPattern && checkerDark === props.dark) return checkerPattern
-  checkerDark = props.dark
+  if (checkerPattern && checkerDark === dark.value) return checkerPattern
+  checkerDark = dark.value
   const pc = document.createElement('canvas')
   pc.width = 16; pc.height = 16
   const pctx = pc.getContext('2d')!
-  if (props.dark) {
+  if (dark.value) {
     pctx.fillStyle = '#1f2937'; pctx.fillRect(0, 0, 16, 16)
     pctx.fillStyle = '#374151'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
   } else {
@@ -164,9 +159,9 @@ function getCheckerPattern(ctx: CanvasRenderingContext2D): CanvasPattern {
 function drawCanvas() {
   const canvas = canvasRef.value
   const container = containerRef.value
-  const item = props.item
-  const region = props.sliceRegion
-  if (!canvas || !container || !item) return
+  const currentImg = item.value
+  const region = sliceRegion.value
+  if (!canvas || !container || !currentImg) return
 
   const dpr = window.devicePixelRatio || 1
   const cw = container.clientWidth
@@ -181,13 +176,13 @@ function drawCanvas() {
   ctx.clearRect(0, 0, cw, ch)
 
   // Background
-  ctx.fillStyle = props.dark ? '#111827' : '#f3f4f6'
+  ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
   ctx.fillRect(0, 0, cw, ch)
 
   const s = zoomLevel.value
   const o = getOffset()
-  const iw = item.image.naturalWidth
-  const ih = item.image.naturalHeight
+  const iw = currentImg.image.naturalWidth
+  const ih = currentImg.image.naturalHeight
 
   // --- Draw image area ---
   ctx.save()
@@ -209,7 +204,7 @@ function drawCanvas() {
   ctx.translate(o.x, o.y)
   ctx.scale(s, s)
   ctx.imageSmoothingEnabled = s < 1
-  ctx.drawImage(item.image, 0, 0)
+  ctx.drawImage(currentImg.image, 0, 0)
   ctx.restore()
 
   // Pixel grid (zoom > 4x)
@@ -339,15 +334,15 @@ function drawRulers(
   o: { x: number; y: number }, s: number, iw: number, ih: number,
 ) {
   // Ruler background
-  ctx.fillStyle = props.dark ? '#1f2937' : '#f9fafb'
+  ctx.fillStyle = dark.value ? '#1f2937' : '#f9fafb'
   ctx.fillRect(0, 0, cw, RULER_SIZE)
   ctx.fillRect(0, 0, RULER_SIZE, ch)
-  ctx.fillStyle = props.dark ? '#374151' : '#e5e7eb'
+  ctx.fillStyle = dark.value ? '#374151' : '#e5e7eb'
   ctx.fillRect(0, RULER_SIZE, cw, 1)
   ctx.fillRect(RULER_SIZE, 0, 1, ch)
 
   // Corner
-  ctx.fillStyle = props.dark ? '#111827' : '#f3f4f6'
+  ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
   ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE)
 
   // Choose tick interval based on zoom
@@ -360,8 +355,8 @@ function drawRulers(
 
   ctx.save()
   ctx.font = '9px ui-monospace, monospace'
-  ctx.fillStyle = props.dark ? '#6b7280' : '#9ca3af'
-  ctx.strokeStyle = props.dark ? '#4b5563' : '#d1d5db'
+  ctx.fillStyle = dark.value ? '#6b7280' : '#9ca3af'
+  ctx.strokeStyle = dark.value ? '#4b5563' : '#d1d5db'
   ctx.lineWidth = 0.5
 
   // Horizontal ruler
@@ -412,13 +407,13 @@ function drawRulers(
   // Zoom level indicator
   ctx.save()
   ctx.font = '11px ui-monospace, monospace'
-  ctx.fillStyle = props.dark ? 'rgba(156,163,175,0.7)' : 'rgba(107, 114, 128, 0.7)'
+  ctx.fillStyle = dark.value ? 'rgba(156,163,175,0.7)' : 'rgba(107, 114, 128, 0.7)'
   ctx.textAlign = 'right'
   ctx.fillText(`${Math.round(s * 100)}%`, cw - 8, ch - 8)
   ctx.restore()
 }
 
-watch([() => props.item?.id, () => props.sliceRegion, () => drag.hovering.value, () => drag.dragging.value, () => props.dark], () => {
+watch([() => item.value?.id, () => sliceRegion.value, () => drag.hovering.value, () => drag.dragging.value, () => dark.value], () => {
   nextTick(drawCanvas)
 }, { deep: true })
 
@@ -450,7 +445,7 @@ onMounted(() => {
     })
   }
   const observer = new ResizeObserver(() => {
-    if (props.item) drawCanvas()
+    if (item.value) drawCanvas()
   })
   if (container) observer.observe(container)
 })
@@ -465,8 +460,8 @@ watch(canvasRef, (canvas) => {
 })
 
 const imageSizeText = computed(() => {
-  if (!props.item) return ''
-  return `${props.item.image.naturalWidth} x ${props.item.image.naturalHeight}`
+  if (!item.value) return ''
+  return `${item.value.image.naturalWidth} x ${item.value.image.naturalHeight}`
 })
 
 const canvasCursor = computed(() => {
@@ -519,24 +514,24 @@ const canvasCursor = computed(() => {
 
       <div class="w-px h-4 bg-gray-200 dark:bg-gray-600" />
 
-      <!-- Board TBLR inputs (Cocos style) -->
+      <!-- Border TBLR inputs (Cocos style) -->
       <div class="flex items-center gap-1.5">
-        <label class="text-gray-500 dark:text-gray-400 font-medium">Board</label>
+        <label class="text-gray-500 dark:text-gray-400 font-medium">Border</label>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">T</span>
-          <input type="number" v-model.number="boardTop" class="w-14 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBoardInput" />
+          <input type="number" v-model.number="borderTop" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">B</span>
-          <input type="number" v-model.number="boardBottom" class="w-14 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBoardInput" />
+          <input type="number" v-model.number="borderBottom" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">L</span>
-          <input type="number" v-model.number="boardLeft" class="w-14 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBoardInput" />
+          <input type="number" v-model.number="borderLeft" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">R</span>
-          <input type="number" v-model.number="boardRight" class="w-14 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBoardInput" />
+          <input type="number" v-model.number="borderRight" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
       </div>
     </div>

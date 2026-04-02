@@ -1,0 +1,310 @@
+<script setup lang="ts">
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { useAppStore } from '../composables/useAppStore'
+
+const store = useAppStore()
+const item = computed(() => store.currentItem.value)
+const sliceRegion = computed(() => store.currentRegion.value)
+const dark = computed(() => store.isDark.value)
+
+const canvasRef = ref<HTMLCanvasElement | null>(null)
+const containerRef = ref<HTMLDivElement | null>(null)
+const previewWidth = ref(300)
+const previewHeight = ref(200)
+
+// Edge drag state
+type EdgeTarget = 'right' | 'bottom' | 'corner' | null
+const edgeDragging = ref<EdgeTarget>(null)
+const edgeHovering = ref<EdgeTarget>(null)
+let edgeDragStart = { x: 0, y: 0, w: 0, h: 0 }
+
+const EDGE_HIT = 6
+
+let checkerPattern: CanvasPattern | null = null
+let checkerDark = false
+function getChecker(ctx: CanvasRenderingContext2D): CanvasPattern {
+  if (checkerPattern && checkerDark === dark.value) return checkerPattern
+  checkerDark = dark.value
+  const pc = document.createElement('canvas')
+  pc.width = 16; pc.height = 16
+  const pctx = pc.getContext('2d')!
+  if (dark.value) {
+    pctx.fillStyle = '#1f2937'; pctx.fillRect(0, 0, 16, 16)
+    pctx.fillStyle = '#374151'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
+  } else {
+    pctx.fillStyle = '#fafafa'; pctx.fillRect(0, 0, 16, 16)
+    pctx.fillStyle = '#f0f0f0'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
+  }
+  checkerPattern = ctx.createPattern(pc, 'repeat')!
+  return checkerPattern
+}
+
+// Compute display bounds
+function getDisplayBounds() {
+  const container = containerRef.value
+  const currentImg = item.value
+  const region = sliceRegion.value
+  if (!container || !currentImg || !region) return null
+
+  const img = currentImg.image
+  const { left, right, top, bottom } = region
+  const pw = previewWidth.value
+  const ph = previewHeight.value
+
+  const leftW = left + 1
+  const rightW = img.naturalWidth - right
+  const topH = top + 1
+  const bottomH = img.naturalHeight - bottom
+
+  const centerDW = Math.max(0, pw - leftW - rightW)
+  const centerDH = Math.max(0, ph - topH - bottomH)
+  const actualW = leftW + centerDW + rightW
+  const actualH = topH + centerDH + bottomH
+
+  const cw = container.clientWidth
+  const ch = container.clientHeight
+  const scale = 1
+
+  const ox = (cw - actualW * scale) / 2
+  const oy = (ch - actualH * scale) / 2 + 8
+
+  const x0 = Math.round(ox)
+  const y0 = Math.round(oy)
+  const x3 = Math.round(ox + actualW * scale)
+  const y3 = Math.round(oy + actualH * scale)
+
+  return { x0, y0, x3, y3, scale, actualW, actualH, leftW, rightW, topH, bottomH, centerDW, centerDH }
+}
+
+function draw() {
+  const canvas = canvasRef.value
+  const container = containerRef.value
+  const currentImg = item.value
+  const region = sliceRegion.value
+  if (!canvas || !container || !currentImg || !region) return
+
+  const dpr = window.devicePixelRatio || 1
+  const cw = container.clientWidth
+  const ch = container.clientHeight
+  canvas.width = cw * dpr
+  canvas.height = ch * dpr
+  canvas.style.width = cw + 'px'
+  canvas.style.height = ch + 'px'
+
+  const ctx = canvas.getContext('2d')!
+  ctx.scale(dpr, dpr)
+  ctx.clearRect(0, 0, cw, ch)
+
+  const bounds = getDisplayBounds()
+  if (!bounds) return
+
+  const img = currentImg.image
+  const { left, right, top, bottom } = region
+  const { x0, y0, x3, y3, scale, leftW, rightW, topH, bottomH, centerDW, centerDH } = bounds
+
+  const x1r = Math.round((cw - bounds.actualW * scale) / 2 + leftW * scale)
+  const x2r = Math.round((cw - bounds.actualW * scale) / 2 + (leftW + centerDW) * scale)
+  const y1r = Math.round((ch - bounds.actualH * scale) / 2 + 8 + topH * scale)
+  const y2r = Math.round((ch - bounds.actualH * scale) / 2 + 8 + (topH + centerDH) * scale)
+
+  const centerSW = Math.max(0, right - left - 1)
+  const centerSH = Math.max(0, bottom - top - 1)
+  const srcX = centerSW > 0 ? left + 1 : left
+  const srcW = centerSW > 0 ? centerSW : 1
+  const srcY = centerSH > 0 ? top + 1 : top
+  const srcH = centerSH > 0 ? centerSH : 1
+
+  // Checkerboard
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x0, y0, x3 - x0, y3 - y0)
+  ctx.clip()
+  ctx.fillStyle = getChecker(ctx)
+  ctx.fillRect(x0, y0, x3 - x0, y3 - y0)
+  ctx.restore()
+
+  // 9-slice drawing with pixel-rounded coords
+  // Corners
+  ctx.drawImage(img, 0, 0, leftW, topH, x0, y0, x1r - x0, y1r - y0)
+  ctx.drawImage(img, right, 0, rightW, topH, x2r, y0, x3 - x2r, y1r - y0)
+  ctx.drawImage(img, 0, bottom, leftW, bottomH, x0, y2r, x1r - x0, y3 - y2r)
+  ctx.drawImage(img, right, bottom, rightW, bottomH, x2r, y2r, x3 - x2r, y3 - y2r)
+
+  // Horizontal edges
+  if (x2r - x1r > 0) {
+    ctx.drawImage(img, srcX, 0, srcW, topH, x1r, y0, x2r - x1r, y1r - y0)
+    ctx.drawImage(img, srcX, bottom, srcW, bottomH, x1r, y2r, x2r - x1r, y3 - y2r)
+  }
+  // Vertical edges
+  if (y2r - y1r > 0) {
+    ctx.drawImage(img, 0, srcY, leftW, srcH, x0, y1r, x1r - x0, y2r - y1r)
+    ctx.drawImage(img, right, srcY, rightW, srcH, x2r, y1r, x3 - x2r, y2r - y1r)
+  }
+  // Center
+  if (x2r - x1r > 0 && y2r - y1r > 0) {
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, x1r, y1r, x2r - x1r, y2r - y1r)
+  }
+
+  // Right edge handle
+  const isRightActive = edgeDragging.value === 'right' || edgeDragging.value === 'corner'
+  const isRightHover = edgeHovering.value === 'right' || edgeHovering.value === 'corner'
+  ctx.strokeStyle = isRightActive ? 'rgba(37,99,235,1)' : isRightHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.4)'
+  ctx.lineWidth = isRightActive || isRightHover ? 2.5 : 1.5
+  ctx.beginPath(); ctx.moveTo(x3, y0); ctx.lineTo(x3, y3); ctx.stroke()
+
+  // Bottom edge handle
+  const isBottomActive = edgeDragging.value === 'bottom' || edgeDragging.value === 'corner'
+  const isBottomHover = edgeHovering.value === 'bottom' || edgeHovering.value === 'corner'
+  ctx.strokeStyle = isBottomActive ? 'rgba(37,99,235,1)' : isBottomHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.4)'
+  ctx.lineWidth = isBottomActive || isBottomHover ? 2.5 : 1.5
+  ctx.beginPath(); ctx.moveTo(x0, y3); ctx.lineTo(x3, y3); ctx.stroke()
+
+  // Corner triangle (bottom-right)
+  const isCornerActive = edgeDragging.value === 'corner'
+  const isCornerHover = edgeHovering.value === 'corner'
+  ctx.fillStyle = isCornerActive ? 'rgba(37,99,235,1)' : isCornerHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.5)'
+  ctx.beginPath()
+  ctx.moveTo(x3, y3)
+  ctx.lineTo(x3 - 10, y3)
+  ctx.lineTo(x3, y3 - 10)
+  ctx.closePath()
+  ctx.fill()
+
+  // Top and left border (thin, non-interactive)
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x3, y0); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y3); ctx.stroke()
+
+  // Size label
+  ctx.fillStyle = '#9ca3af'
+  ctx.font = '10px ui-monospace, monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText(`${previewWidth.value} x ${previewHeight.value}`, cw / 2, y0 - 4)
+}
+
+// Detect which edge the mouse is near
+function detectEdge(mx: number, my: number): EdgeTarget {
+  const bounds = getDisplayBounds()
+  if (!bounds) return null
+  const { x0, y0, x3, y3 } = bounds
+
+  const nearRight = Math.abs(mx - x3) < EDGE_HIT && my >= y0 - EDGE_HIT && my <= y3 + EDGE_HIT
+  const nearBottom = Math.abs(my - y3) < EDGE_HIT && mx >= x0 - EDGE_HIT && mx <= x3 + EDGE_HIT
+
+  if (nearRight && nearBottom) return 'corner'
+  if (nearRight) return 'right'
+  if (nearBottom) return 'bottom'
+  return null
+}
+
+function getCursorForEdge(target: EdgeTarget): string {
+  if (target === 'right') return 'ew-resize'
+  if (target === 'bottom') return 'ns-resize'
+  if (target === 'corner') return 'nwse-resize'
+  return 'default'
+}
+
+function onMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const canvas = canvasRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const mx = e.clientX - rect.left
+  const my = e.clientY - rect.top
+  const target = detectEdge(mx, my)
+  if (target) {
+    edgeDragging.value = target
+    edgeDragStart = { x: e.clientX, y: e.clientY, w: previewWidth.value, h: previewHeight.value }
+    e.preventDefault()
+  }
+}
+
+function onMouseMove(e: MouseEvent) {
+  if (edgeDragging.value) {
+    const dx = e.clientX - edgeDragStart.x
+    const dy = e.clientY - edgeDragStart.y
+    const bounds = getDisplayBounds()
+    if (!bounds) return
+    const pixelRatio = 1 / bounds.scale
+
+    const currentImg = item.value
+    const region = sliceRegion.value
+    if (!currentImg || !region) return
+    const leftW = region.left + 1
+    const rightW = currentImg.image.naturalWidth - region.right
+    const topH = region.top + 1
+    const bottomH = currentImg.image.naturalHeight - region.bottom
+    const minW = leftW + rightW
+    const minH = topH + bottomH
+
+    if (edgeDragging.value === 'right' || edgeDragging.value === 'corner') {
+      previewWidth.value = Math.max(minW, Math.round(edgeDragStart.w + dx * pixelRatio))
+    }
+    if (edgeDragging.value === 'bottom' || edgeDragging.value === 'corner') {
+      previewHeight.value = Math.max(minH, Math.round(edgeDragStart.h + dy * pixelRatio))
+    }
+  } else {
+    // Hover detection
+    const canvas = canvasRef.value
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    edgeHovering.value = detectEdge(mx, my)
+  }
+}
+
+function onMouseUp() {
+  edgeDragging.value = null
+}
+
+const cursorStyle = computed(() => {
+  if (edgeDragging.value) return getCursorForEdge(edgeDragging.value)
+  if (edgeHovering.value) return getCursorForEdge(edgeHovering.value)
+  return 'default'
+})
+
+// Reset preview size to original image dimensions when switching images
+watch(() => item.value?.id, () => {
+  const currentImg = item.value
+  if (currentImg) {
+    previewWidth.value = currentImg.image.naturalWidth
+    previewHeight.value = currentImg.image.naturalHeight
+  }
+})
+
+watch([() => item.value?.id, () => sliceRegion.value, previewWidth, previewHeight, () => dark.value, edgeHovering, edgeDragging], () => {
+  nextTick(draw)
+}, { deep: true })
+
+onMounted(() => {
+  const obs = new ResizeObserver(() => draw())
+  if (containerRef.value) obs.observe(containerRef.value)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('mouseup', onMouseUp)
+})
+</script>
+
+<template>
+  <div class="flex flex-col h-full bg-white dark:bg-gray-800">
+    <div
+      ref="containerRef"
+      class="flex-1 min-h-0 relative bg-gray-50 dark:bg-gray-900"
+      @mousedown="onMouseDown"
+    >
+      <canvas
+        v-if="item"
+        ref="canvasRef"
+        class="absolute inset-0"
+        :style="{ cursor: cursorStyle }"
+      />
+      <div v-else class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-xs">拉伸预览</div>
+    </div>
+  </div>
+</template>
