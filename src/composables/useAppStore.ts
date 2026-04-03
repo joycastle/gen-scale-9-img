@@ -12,6 +12,7 @@ export interface AppStore {
   enableAlphaBleeding: Ref<boolean>
   addItems: (newItems: ImageItem[]) => void
   removeItem: (id: string) => void
+  clearAll: () => void
   selectItem: (id: string) => void
   updateRegion: (region: SliceRegion) => void
   recompute: (tolerance: number) => void
@@ -44,6 +45,11 @@ function removeItem(id: string) {
   }
 }
 
+function clearAll() {
+  items.value = []
+  selectedId.value = null
+}
+
 function selectItem(id: string) {
   selectedId.value = id
 }
@@ -71,6 +77,7 @@ export function useAppStore(): AppStore {
     enableAlphaBleeding,
     addItems,
     removeItem,
+    clearAll,
     selectItem,
     updateRegion,
     recompute,

@@ -28,22 +28,67 @@ function onDragLeave(e: DragEvent) {
   }
 }
 
-function onDrop(e: DragEvent) {
+async function onDrop(e: DragEvent) {
   e.preventDefault()
   isDragging.value = false
-  const files = e.dataTransfer?.files
-  if (files) processFiles(files)
+  const items = e.dataTransfer?.items
+  if (items) {
+    const files = await collectPngFiles(items)
+    processFiles(files)
+  }
 }
 
 function onFileInput(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files) processFiles(input.files)
+  if (input.files) processFiles(Array.from(input.files).filter(f => f.type === 'image/png'))
   input.value = ''
 }
 
-function processFiles(files: FileList) {
-  const pngFiles = Array.from(files).filter(f => f.type === 'image/png')
-  const promises = pngFiles.map(file => loadImage(file))
+// 从 DataTransferItemList 递归收集所有 PNG 文件
+async function collectPngFiles(items: DataTransferItemList): Promise<File[]> {
+  const files: File[] = []
+  const entries: FileSystemEntry[] = []
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry?.()
+    if (entry) entries.push(entry)
+  }
+  await traverseEntries(entries, files)
+  return files
+}
+
+async function traverseEntries(entries: FileSystemEntry[], result: File[]): Promise<void> {
+  for (const entry of entries) {
+    if (entry.isFile) {
+      const file = await entryToFile(entry as FileSystemFileEntry)
+      if (file.type === 'image/png') result.push(file)
+    } else if (entry.isDirectory) {
+      const children = await readDirectory(entry as FileSystemDirectoryEntry)
+      await traverseEntries(children, result)
+    }
+  }
+}
+
+function entryToFile(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject))
+}
+
+function readDirectory(dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> {
+  return new Promise((resolve, reject) => {
+    const reader = dir.createReader()
+    const all: FileSystemEntry[] = []
+    const readBatch = () => {
+      reader.readEntries((entries) => {
+        if (entries.length === 0) { resolve(all); return }
+        all.push(...entries)
+        readBatch() // readEntries 可能分批返回
+      }, reject)
+    }
+    readBatch()
+  })
+}
+
+function processFiles(files: File[]) {
+  const promises = files.map(file => loadImage(file))
   Promise.all(promises).then(newItems => {
     store.addItems(newItems)
   })
@@ -112,6 +157,17 @@ function loadImage(file: File): Promise<ImageItem> {
         >
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+        <!-- Clear all button -->
+        <button
+          v-if="store.items.value.length > 0"
+          class="w-5 h-5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 flex items-center justify-center text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+          @click="store.clearAll()"
+          title="清空全部"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </button>
         <!-- List view -->

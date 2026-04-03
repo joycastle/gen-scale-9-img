@@ -69,10 +69,10 @@ function onDockReady(event: DockviewReadyEvent) {
     } catch { /* fall through */ }
   }
 
-  event.api.addPanel({ id: 'imagePanel', component: 'ImagePanel', title: '图片列表' })
-  event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', position: { referencePanel: 'imagePanel', direction: 'right' } } as AddPanelOptions)
+  event.api.addPanel({ id: 'imageList', component: 'ImageList', title: '图片列表' })
+  event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', position: { referencePanel: 'imageList', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'stretchPreview', component: 'StretchPreview', title: '拉伸预览', position: { referencePanel: 'imageEditor', direction: 'right' } } as AddPanelOptions)
-  event.api.addPanel({ id: 'cutPreview', component: 'CutPreview', title: '裁切结果', position: { referencePanel: 'imagePanel', direction: 'below' } } as AddPanelOptions)
+  event.api.addPanel({ id: 'cutPreview', component: 'CutPreview', title: '裁切结果', position: { referencePanel: 'imageList', direction: 'below' } } as AddPanelOptions)
   event.api.addPanel({ id: 'alphaBleedingPreview', component: 'AlphaBleedingPreview', title: 'Bleeding 预览', position: { referencePanel: 'cutPreview' } } as AddPanelOptions)
   event.api.getPanel('cutPreview')!.api.setActive()
 }
