@@ -1,10 +1,40 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { ImageItem } from '../types'
 import { computeSliceRegion, getImageDataFromImage, trimImage } from '../utils/sliceAlgorithm'
 import { useAppStore } from '../composables/useAppStore'
 
 const store = useAppStore()
+
+// 生成裁切后的缩略图 dataURL
+const PADDING = 2
+function cutThumbSrc(item: ImageItem): string {
+  const img = item.image
+  const { left, right, top, bottom } = item.sliceRegion
+  const leftW = left + 1
+  const rightW = img.naturalWidth - right
+  const topH = top + 1
+  const bottomH = img.naturalHeight - bottom
+  const outW = leftW + rightW + PADDING * 2
+  const outH = topH + bottomH + PADDING * 2
+  const c = document.createElement('canvas')
+  c.width = outW; c.height = outH
+  const ctx = c.getContext('2d')!
+  ctx.drawImage(img, 0, 0, leftW, topH, PADDING, PADDING, leftW, topH)
+  ctx.drawImage(img, right, 0, rightW, topH, leftW + PADDING, PADDING, rightW, topH)
+  ctx.drawImage(img, 0, bottom, leftW, bottomH, PADDING, topH + PADDING, leftW, bottomH)
+  ctx.drawImage(img, right, bottom, rightW, bottomH, leftW + PADDING, topH + PADDING, rightW, bottomH)
+  return c.toDataURL('image/png')
+}
+
+// 响应式缩略图 map，items 或 sliceRegion 变化时重新生成
+const thumbMap = computed(() => {
+  const map: Record<string, string> = {}
+  for (const item of store.items.value) {
+    map[item.id] = cutThumbSrc(item)
+  }
+  return map
+})
 
 const isDragging = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -227,7 +257,7 @@ function loadImage(file: File): Promise<ImageItem> {
           @click="store.selectItem(item.id)"
         >
           <div class="aspect-square bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:8px_8px] flex items-center justify-center p-1">
-            <img :src="item.image.src" :alt="item.name" class="max-w-full max-h-full object-contain" />
+            <img :src="thumbMap[item.id]" :alt="item.name" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="px-1 py-0.5 bg-white dark:bg-gray-800">
             <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate text-center">{{ item.name }}</p>
@@ -255,7 +285,7 @@ function loadImage(file: File): Promise<ImageItem> {
           @click="store.selectItem(item.id)"
         >
           <div class="w-8 h-8 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
-            <img :src="item.image.src" :alt="item.name" class="max-w-full max-h-full object-contain" />
+            <img :src="thumbMap[item.id]" :alt="item.name" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ item.name }}</p>

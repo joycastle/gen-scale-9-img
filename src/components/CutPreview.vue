@@ -60,9 +60,9 @@ function draw() {
   const outW = leftW + rightW + PADDING * 2
   const outH = topH + bottomH + PADDING * 2
 
-  const scale = Math.min((cw - 16) / outW, (ch - 28) / outH, 2)
+  const scale = Math.min((cw - 20) / outW, (ch - 32) / outH)
   const ox = (cw - outW * scale) / 2
-  const oy = (ch - outH * scale) / 2 + 8
+  const oy = (ch - outH * scale) / 2 + 6
 
   // 棋盘格
   ctx.save()
