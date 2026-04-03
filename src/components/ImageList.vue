@@ -281,7 +281,7 @@ function loadImage(file: File): Promise<ImageItem> {
           @click="store.selectItem(item.id)"
         >
           <div class="aspect-square bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:8px_8px] flex items-center justify-center p-1">
-            <img :src="thumbMap[item.id]" :alt="item.name" class="max-w-full max-h-full object-contain" />
+            <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="px-1 py-0.5 bg-white dark:bg-gray-800">
             <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate text-center">{{ item.name }}</p>
@@ -309,7 +309,7 @@ function loadImage(file: File): Promise<ImageItem> {
           @click="store.selectItem(item.id)"
         >
           <div class="w-8 h-8 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
-            <img :src="thumbMap[item.id]" :alt="item.name" class="max-w-full max-h-full object-contain" />
+            <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ item.name }}</p>
