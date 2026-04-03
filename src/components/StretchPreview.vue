@@ -265,12 +265,17 @@ const cursorStyle = computed(() => {
   return 'default'
 })
 
-// 切换图片时重置预览尺寸为原始图片尺寸
+// 切换图片时重置预览尺寸为裁切后尺寸
 watch(() => item.value?.id, () => {
   const currentImg = item.value
-  if (currentImg) {
-    previewWidth.value = currentImg.image.naturalWidth
-    previewHeight.value = currentImg.image.naturalHeight
+  const region = sliceRegion.value
+  if (currentImg && region) {
+    const leftW = region.left + 1
+    const rightW = currentImg.image.naturalWidth - region.right
+    const topH = region.top + 1
+    const bottomH = currentImg.image.naturalHeight - region.bottom
+    previewWidth.value = leftW + rightW + 4
+    previewHeight.value = topH + bottomH + 4
   }
 })
 
