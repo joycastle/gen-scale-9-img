@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
 
 const store = useAppStore()
@@ -99,9 +99,15 @@ watch([() => item.value?.id, () => sliceRegion.value, () => dark.value], () => {
   nextTick(draw)
 }, { deep: true })
 
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
-  const obs = new ResizeObserver(() => draw())
-  if (containerRef.value) obs.observe(containerRef.value)
+  resizeObserver = new ResizeObserver(() => draw())
+  if (containerRef.value) resizeObserver.observe(containerRef.value)
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
 })
 </script>
 

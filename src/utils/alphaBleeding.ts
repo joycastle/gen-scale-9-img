@@ -82,7 +82,7 @@ export function alphaBleeding(imageData: ImageData): ImageData {
         image[pi + 1] = (g / count) | 0
         image[pi + 2] = (b / count) | 0
         // alpha 保持为 0
-        opaque[j] = 0x7E as unknown as number // 本轮填充标记，& 1 === 0
+        opaque[j] = 126 // 本轮填充标记，& 1 === 0，>>= 1 后变为 63（& 1 === 1）
 
         // 将相邻的 loose 像素加入下一轮
         for (const [dx, dy] of offsets) {

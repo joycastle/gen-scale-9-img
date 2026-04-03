@@ -113,11 +113,7 @@ export function useDragInteraction(
 
     e.preventDefault()
     const updated = { ...region }
-    if (target === 'left' || target === 'right') {
-      updated[target] += delta
-    } else {
-      updated[target] += delta
-    }
+    updated[target] += delta
     onUpdate(clampRegion(updated))
   }
 

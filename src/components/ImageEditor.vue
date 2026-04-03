@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import type { SliceRegion } from '../types'
 import { useDragInteraction } from '../composables/useDragInteraction'
 import { useAppStore } from '../composables/useAppStore'
@@ -417,6 +417,24 @@ watch([() => item.value?.id, () => sliceRegion.value, () => drag.hovering.value,
   nextTick(drawCanvas)
 }, { deep: true })
 
+let resizeObserver: ResizeObserver | null = null
+
+function onPanMove(e: MouseEvent) {
+  if (isPanning.value) {
+    panOffset.value = {
+      x: panStartOffset.x + (e.clientX - panStart.x),
+      y: panStartOffset.y + (e.clientY - panStart.y),
+    }
+    nextTick(drawCanvas)
+  }
+}
+
+function onPanUp(e: MouseEvent) {
+  if (e.button === 1) {
+    isPanning.value = false
+  }
+}
+
 onMounted(() => {
   // 平移监听 — 仅响应鼠标中键
   const container = containerRef.value
@@ -429,25 +447,19 @@ onMounted(() => {
         e.preventDefault()
       }
     })
-    window.addEventListener('mousemove', (e: MouseEvent) => {
-      if (isPanning.value) {
-        panOffset.value = {
-          x: panStartOffset.x + (e.clientX - panStart.x),
-          y: panStartOffset.y + (e.clientY - panStart.y),
-        }
-        nextTick(drawCanvas)
-      }
-    })
-    window.addEventListener('mouseup', (e: MouseEvent) => {
-      if (e.button === 1) {
-        isPanning.value = false
-      }
-    })
+    window.addEventListener('mousemove', onPanMove)
+    window.addEventListener('mouseup', onPanUp)
   }
-  const observer = new ResizeObserver(() => {
+  resizeObserver = new ResizeObserver(() => {
     if (item.value) drawCanvas()
   })
-  if (container) observer.observe(container)
+  if (container) resizeObserver.observe(container)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanUp)
+  resizeObserver?.disconnect()
 })
 
 // 画布可用时绑定拖拽交互

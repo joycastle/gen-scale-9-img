@@ -283,14 +283,17 @@ watch([() => item.value?.id, () => sliceRegion.value, previewWidth, previewHeigh
   nextTick(draw)
 }, { deep: true })
 
+let resizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
-  const obs = new ResizeObserver(() => draw())
-  if (containerRef.value) obs.observe(containerRef.value)
+  resizeObserver = new ResizeObserver(() => draw())
+  if (containerRef.value) resizeObserver.observe(containerRef.value)
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
 })
 
 onUnmounted(() => {
+  resizeObserver?.disconnect()
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
 })

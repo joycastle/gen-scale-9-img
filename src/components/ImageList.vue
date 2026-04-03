@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import type { ImageItem } from '../types'
 import { computeSliceRegion, getImageDataFromImage, trimImage } from '../utils/sliceAlgorithm'
 import { useAppStore } from '../composables/useAppStore'
@@ -27,11 +27,32 @@ function cutThumbSrc(item: ImageItem): string {
   return c.toDataURL('image/png')
 }
 
-// 响应式缩略图 map，items 或 sliceRegion 变化时重新生成
+// 缓存 key：id + sliceRegion 序列化
+function thumbKey(item: ImageItem): string {
+  const r = item.sliceRegion
+  return `${item.id}:${r.left},${r.right},${r.top},${r.bottom}`
+}
+
+// 按 item 缓存缩略图，只更新变化的
+const thumbCache = reactive<Record<string, { key: string; src: string }>>({})
 const thumbMap = computed(() => {
   const map: Record<string, string> = {}
+  const activeIds = new Set<string>()
   for (const item of store.items.value) {
-    map[item.id] = cutThumbSrc(item)
+    activeIds.add(item.id)
+    const key = thumbKey(item)
+    const cached = thumbCache[item.id]
+    if (cached && cached.key === key) {
+      map[item.id] = cached.src
+    } else {
+      const src = cutThumbSrc(item)
+      thumbCache[item.id] = { key, src }
+      map[item.id] = src
+    }
+  }
+  // 清理已删除 item 的缓存
+  for (const id of Object.keys(thumbCache)) {
+    if (!activeIds.has(id)) delete thumbCache[id]
   }
   return map
 })
@@ -119,8 +140,11 @@ function readDirectory(dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]
 
 function processFiles(files: File[]) {
   const promises = files.map(file => loadImage(file))
-  Promise.all(promises).then(newItems => {
-    store.addItems(newItems)
+  Promise.allSettled(promises).then(results => {
+    const newItems = results
+      .filter((r): r is PromiseFulfilledResult<ImageItem> => r.status === 'fulfilled')
+      .map(r => r.value)
+    if (newItems.length > 0) store.addItems(newItems)
   })
 }
 
