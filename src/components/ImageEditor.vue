@@ -12,17 +12,17 @@ const dark = computed(() => store.isDark.value)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 
-// Zoom & pan state
+// 缩放与平移状态
 const zoomLevel = ref(1)
 const panOffset = ref({ x: 0, y: 0 })
 const isPanning = ref(false)
 let panStart = { x: 0, y: 0 }
 let panStartOffset = { x: 0, y: 0 }
 
-// Ruler size
+// 标尺尺寸
 const RULER_SIZE = 24
 
-// Editor controls
+// 编辑器控件
 const localTolerance = ref(0)
 const borderTop = ref(0)
 const borderBottom = ref(0)
@@ -70,7 +70,7 @@ function onRecompute() {
   store.recompute(localTolerance.value)
 }
 
-// Compute canvas -> image transform
+// 计算画布到图片的坐标变换
 function getScale() { return zoomLevel.value }
 function getOffset() {
   const container = containerRef.value
@@ -95,7 +95,7 @@ const drag = useDragInteraction(
   (updated) => store.updateRegion(updated),
 )
 
-// Zoom
+// 滚轮缩放
 function onWheel(e: WheelEvent) {
   if (!item.value) return
   e.preventDefault()
@@ -107,7 +107,7 @@ function onWheel(e: WheelEvent) {
   const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
   const newZoom = Math.min(20, Math.max(0.1, oldZoom * factor))
 
-  // Zoom centered on mouse position
+  // 以鼠标位置为中心缩放
   const o = getOffset()
   panOffset.value = {
     x: mouseX - (mouseX - o.x) * (newZoom / oldZoom) - RULER_SIZE,
@@ -117,7 +117,7 @@ function onWheel(e: WheelEvent) {
   nextTick(drawCanvas)
 }
 
-// Fit to view
+// 适应视图
 function fitToView() {
   const container = containerRef.value
   const currentImg = item.value
@@ -135,7 +135,7 @@ function fitToView() {
   nextTick(drawCanvas)
 }
 
-// Checkerboard pattern (cached, dark-aware)
+// 棋盘格图案（缓存，适配暗色模式）
 let checkerPattern: CanvasPattern | null = null
 let checkerDark = false
 function getCheckerPattern(ctx: CanvasRenderingContext2D): CanvasPattern {
@@ -155,7 +155,7 @@ function getCheckerPattern(ctx: CanvasRenderingContext2D): CanvasPattern {
   return checkerPattern
 }
 
-// Draw
+// 绘制画布
 function drawCanvas() {
   const canvas = canvasRef.value
   const container = containerRef.value
@@ -175,7 +175,7 @@ function drawCanvas() {
   ctx.scale(dpr, dpr)
   ctx.clearRect(0, 0, cw, ch)
 
-  // Background
+  // 背景
   ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
   ctx.fillRect(0, 0, cw, ch)
 
@@ -184,13 +184,13 @@ function drawCanvas() {
   const iw = currentImg.image.naturalWidth
   const ih = currentImg.image.naturalHeight
 
-  // --- Draw image area ---
+  // --- 绘制图片区域 ---
   ctx.save()
   ctx.beginPath()
   ctx.rect(RULER_SIZE, RULER_SIZE, cw - RULER_SIZE, ch - RULER_SIZE)
   ctx.clip()
 
-  // Checkerboard under image - clipped to exact image bounds
+  // 图片下方的棋盘格背景 - 裁剪到图片边界
   ctx.save()
   ctx.beginPath()
   ctx.rect(o.x, o.y, iw * s, ih * s)
@@ -199,7 +199,7 @@ function drawCanvas() {
   ctx.fillRect(o.x, o.y, iw * s, ih * s)
   ctx.restore()
 
-  // Image
+  // 图片
   ctx.save()
   ctx.translate(o.x, o.y)
   ctx.scale(s, s)
@@ -207,7 +207,7 @@ function drawCanvas() {
   ctx.drawImage(currentImg.image, 0, 0)
   ctx.restore()
 
-  // Pixel grid (zoom > 4x)
+  // 像素网格（缩放 > 4x 时显示）
   if (s >= 4) {
     ctx.save()
     ctx.strokeStyle = 'rgba(0,0,0,0.06)'
@@ -227,12 +227,12 @@ function drawCanvas() {
     ctx.restore()
   }
 
-  // Slice lines
+  // 切片线
   if (region) {
     const hoverTarget = drag.hovering.value
     const dragTarget = drag.dragging.value
 
-    // Stretchable region highlight - diagonal stripes
+    // 可拉伸区域高亮 - 斜线条纹
     ctx.save()
     const rx = o.x + region.left * s
     const ry = o.y + region.top * s
@@ -241,7 +241,7 @@ function drawCanvas() {
     ctx.fillStyle = 'rgba(59, 130, 246, 0.08)'
     ctx.fillRect(rx, ry, rw, rh)
 
-    // Stripe pattern
+    // 条纹图案
     const stripeCanvas = document.createElement('canvas')
     stripeCanvas.width = 8; stripeCanvas.height = 8
     const sctx = stripeCanvas.getContext('2d')!
@@ -253,7 +253,7 @@ function drawCanvas() {
     ctx.fillRect(rx, ry, rw, rh)
     ctx.restore()
 
-    // Draw each slice line
+    // 绘制每条切片线
     const lines: { target: 'left' | 'right' | 'top' | 'bottom'; isVertical: boolean; pos: number }[] = [
       { target: 'left', isVertical: true, pos: region.left },
       { target: 'right', isVertical: true, pos: region.right },
@@ -285,7 +285,7 @@ function drawCanvas() {
       ctx.stroke()
       ctx.setLineDash([])
 
-      // Handle squares at edges
+      // 边缘手柄方块
       const handleSize = 6
       ctx.fillStyle = lineColor
       if (line.isVertical) {
@@ -298,7 +298,7 @@ function drawCanvas() {
         ctx.fillRect(Math.min(cw, o.x + iw * s) - handleSize + 1, py - handleSize / 2, handleSize, handleSize)
       }
 
-      // Coordinate label during drag or hover
+      // 拖拽或悬停时显示坐标标签
       if (isActive || isHover) {
         const label = `${line.pos}px`
         ctx.font = '11px ui-monospace, monospace'
@@ -325,7 +325,7 @@ function drawCanvas() {
 
   ctx.restore()
 
-  // --- Rulers ---
+  // --- 标尺 ---
   drawRulers(ctx, cw, ch, o, s, iw, ih)
 }
 
@@ -333,7 +333,7 @@ function drawRulers(
   ctx: CanvasRenderingContext2D, cw: number, ch: number,
   o: { x: number; y: number }, s: number, iw: number, ih: number,
 ) {
-  // Ruler background
+  // 标尺背景
   ctx.fillStyle = dark.value ? '#1f2937' : '#f9fafb'
   ctx.fillRect(0, 0, cw, RULER_SIZE)
   ctx.fillRect(0, 0, RULER_SIZE, ch)
@@ -341,11 +341,11 @@ function drawRulers(
   ctx.fillRect(0, RULER_SIZE, cw, 1)
   ctx.fillRect(RULER_SIZE, 0, 1, ch)
 
-  // Corner
+  // 角落
   ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
   ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE)
 
-  // Choose tick interval based on zoom
+  // 根据缩放选择刻度间距
   const pixelsPerUnit = s
   let tickInterval = 1
   const intervals = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000]
@@ -359,7 +359,7 @@ function drawRulers(
   ctx.strokeStyle = dark.value ? '#4b5563' : '#d1d5db'
   ctx.lineWidth = 0.5
 
-  // Horizontal ruler
+  // 水平标尺
   ctx.save()
   ctx.beginPath()
   ctx.rect(RULER_SIZE, 0, cw - RULER_SIZE, RULER_SIZE)
@@ -379,7 +379,7 @@ function drawRulers(
   }
   ctx.restore()
 
-  // Vertical ruler
+  // 垂直标尺
   ctx.save()
   ctx.beginPath()
   ctx.rect(0, RULER_SIZE, RULER_SIZE, ch - RULER_SIZE)
@@ -404,7 +404,7 @@ function drawRulers(
   ctx.restore()
   ctx.restore()
 
-  // Zoom level indicator
+  // 缩放比例指示器
   ctx.save()
   ctx.font = '11px ui-monospace, monospace'
   ctx.fillStyle = dark.value ? 'rgba(156,163,175,0.7)' : 'rgba(107, 114, 128, 0.7)'
@@ -418,7 +418,7 @@ watch([() => item.value?.id, () => sliceRegion.value, () => drag.hovering.value,
 }, { deep: true })
 
 onMounted(() => {
-  // Pan listeners on container — only respond to middle mouse button
+  // 平移监听 — 仅响应鼠标中键
   const container = containerRef.value
   if (container) {
     container.addEventListener('mousedown', (e: MouseEvent) => {
@@ -450,7 +450,7 @@ onMounted(() => {
   if (container) observer.observe(container)
 })
 
-// Attach drag interaction when canvas becomes available
+// 画布可用时绑定拖拽交互
 let dragAttached = false
 watch(canvasRef, (canvas) => {
   if (canvas && !dragAttached) {

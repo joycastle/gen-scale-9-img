@@ -12,7 +12,7 @@ export function exportSlice9(
   const imgW = image.naturalWidth
   const imgH = image.naturalHeight
 
-  // Four corners dimensions
+  // 四角尺寸
   const leftW = left + 1
   const rightW = imgW - right
   const topH = top + 1
@@ -26,13 +26,13 @@ export function exportSlice9(
   canvas.height = outH
   const ctx = canvas.getContext('2d')!
 
-  // Top-left corner
+  // 左上角
   ctx.drawImage(image, 0, 0, leftW, topH, PADDING, PADDING, leftW, topH)
-  // Top-right corner
+  // 右上角
   ctx.drawImage(image, right, 0, rightW, topH, leftW + PADDING, PADDING, rightW, topH)
-  // Bottom-left corner
+  // 左下角
   ctx.drawImage(image, 0, bottom, leftW, bottomH, PADDING, topH + PADDING, leftW, bottomH)
-  // Bottom-right corner
+  // 右下角
   ctx.drawImage(image, right, bottom, rightW, bottomH, leftW + PADDING, topH + PADDING, rightW, bottomH)
 
   if (enableAlphaBleeding) {

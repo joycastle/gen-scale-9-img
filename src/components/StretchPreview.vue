@@ -12,7 +12,7 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const previewWidth = ref(300)
 const previewHeight = ref(200)
 
-// Edge drag state
+// 边缘拖拽状态
 type EdgeTarget = 'right' | 'bottom' | 'corner' | null
 const edgeDragging = ref<EdgeTarget>(null)
 const edgeHovering = ref<EdgeTarget>(null)
@@ -39,7 +39,7 @@ function getChecker(ctx: CanvasRenderingContext2D): CanvasPattern {
   return checkerPattern
 }
 
-// Compute display bounds
+// 计算显示区域
 function getDisplayBounds() {
   const container = containerRef.value
   const currentImg = item.value
@@ -114,7 +114,7 @@ function draw() {
   const srcY = centerSH > 0 ? top + 1 : top
   const srcH = centerSH > 0 ? centerSH : 1
 
-  // Checkerboard
+  // 棋盘格
   ctx.save()
   ctx.beginPath()
   ctx.rect(x0, y0, x3 - x0, y3 - y0)
@@ -123,43 +123,43 @@ function draw() {
   ctx.fillRect(x0, y0, x3 - x0, y3 - y0)
   ctx.restore()
 
-  // 9-slice drawing with pixel-rounded coords
-  // Corners
+  // 九宫格绘制（像素对齐坐标）
+  // 四角
   ctx.drawImage(img, 0, 0, leftW, topH, x0, y0, x1r - x0, y1r - y0)
   ctx.drawImage(img, right, 0, rightW, topH, x2r, y0, x3 - x2r, y1r - y0)
   ctx.drawImage(img, 0, bottom, leftW, bottomH, x0, y2r, x1r - x0, y3 - y2r)
   ctx.drawImage(img, right, bottom, rightW, bottomH, x2r, y2r, x3 - x2r, y3 - y2r)
 
-  // Horizontal edges
+  // 水平边
   if (x2r - x1r > 0) {
     ctx.drawImage(img, srcX, 0, srcW, topH, x1r, y0, x2r - x1r, y1r - y0)
     ctx.drawImage(img, srcX, bottom, srcW, bottomH, x1r, y2r, x2r - x1r, y3 - y2r)
   }
-  // Vertical edges
+  // 垂直边
   if (y2r - y1r > 0) {
     ctx.drawImage(img, 0, srcY, leftW, srcH, x0, y1r, x1r - x0, y2r - y1r)
     ctx.drawImage(img, right, srcY, rightW, srcH, x2r, y1r, x3 - x2r, y2r - y1r)
   }
-  // Center
+  // 中心
   if (x2r - x1r > 0 && y2r - y1r > 0) {
     ctx.drawImage(img, srcX, srcY, srcW, srcH, x1r, y1r, x2r - x1r, y2r - y1r)
   }
 
-  // Right edge handle
+  // 右侧边缘手柄
   const isRightActive = edgeDragging.value === 'right' || edgeDragging.value === 'corner'
   const isRightHover = edgeHovering.value === 'right' || edgeHovering.value === 'corner'
   ctx.strokeStyle = isRightActive ? 'rgba(37,99,235,1)' : isRightHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.4)'
   ctx.lineWidth = isRightActive || isRightHover ? 2.5 : 1.5
   ctx.beginPath(); ctx.moveTo(x3, y0); ctx.lineTo(x3, y3); ctx.stroke()
 
-  // Bottom edge handle
+  // 底部边缘手柄
   const isBottomActive = edgeDragging.value === 'bottom' || edgeDragging.value === 'corner'
   const isBottomHover = edgeHovering.value === 'bottom' || edgeHovering.value === 'corner'
   ctx.strokeStyle = isBottomActive ? 'rgba(37,99,235,1)' : isBottomHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.4)'
   ctx.lineWidth = isBottomActive || isBottomHover ? 2.5 : 1.5
   ctx.beginPath(); ctx.moveTo(x0, y3); ctx.lineTo(x3, y3); ctx.stroke()
 
-  // Corner triangle (bottom-right)
+  // 右下角三角形
   const isCornerActive = edgeDragging.value === 'corner'
   const isCornerHover = edgeHovering.value === 'corner'
   ctx.fillStyle = isCornerActive ? 'rgba(37,99,235,1)' : isCornerHover ? 'rgba(59,130,246,0.8)' : 'rgba(59,130,246,0.5)'
@@ -170,20 +170,20 @@ function draw() {
   ctx.closePath()
   ctx.fill()
 
-  // Top and left border (thin, non-interactive)
+  // 上方和左侧边框（细线，不可交互）
   ctx.strokeStyle = 'rgba(0,0,0,0.08)'
   ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x3, y0); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y3); ctx.stroke()
 
-  // Size label
+  // 尺寸标签
   ctx.fillStyle = '#9ca3af'
   ctx.font = '10px ui-monospace, monospace'
   ctx.textAlign = 'center'
   ctx.fillText(`${previewWidth.value} x ${previewHeight.value}`, cw / 2, y0 - 4)
 }
 
-// Detect which edge the mouse is near
+// 检测鼠标靠近哪条边
 function detectEdge(mx: number, my: number): EdgeTarget {
   const bounds = getDisplayBounds()
   if (!bounds) return null
@@ -245,7 +245,7 @@ function onMouseMove(e: MouseEvent) {
       previewHeight.value = Math.max(minH, Math.round(edgeDragStart.h + dy * pixelRatio))
     }
   } else {
-    // Hover detection
+    // 悬停检测
     const canvas = canvasRef.value
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
@@ -265,7 +265,7 @@ const cursorStyle = computed(() => {
   return 'default'
 })
 
-// Reset preview size to original image dimensions when switching images
+// 切换图片时重置预览尺寸为原始图片尺寸
 watch(() => item.value?.id, () => {
   const currentImg = item.value
   if (currentImg) {

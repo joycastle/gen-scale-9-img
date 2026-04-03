@@ -84,7 +84,7 @@ export function useDragInteraction(
   function onMouseDown(e: MouseEvent) {
     const region = regionRef()
     if (!region) return
-    // Only respond to left button
+    // 仅响应鼠标左键
     if (e.button !== 0) return
     const { x, y } = toImageCoords(e.clientX, e.clientY)
     const target = detectTarget(x, y, region)

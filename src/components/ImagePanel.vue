@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { ImageItem } from '../types'
-import { computeSliceRegion, getImageDataFromImage } from '../utils/sliceAlgorithm'
+import { computeSliceRegion, getImageDataFromImage, trimImage } from '../utils/sliceAlgorithm'
 import { useAppStore } from '../composables/useAppStore'
 
 const store = useAppStore()
@@ -54,13 +54,14 @@ function loadImage(file: File): Promise<ImageItem> {
     const reader = new FileReader()
     reader.onload = () => {
       const img = new Image()
-      img.onload = () => {
-        const imageData = getImageDataFromImage(img)
+      img.onload = async () => {
+        const trimmed = await trimImage(img)
+        const imageData = getImageDataFromImage(trimmed)
         const sliceRegion = computeSliceRegion(imageData, 0)
         resolve({
           id: crypto.randomUUID(),
           name: file.name,
-          image: img,
+          image: trimmed,
           imageData,
           sliceRegion,
           alphaBleeding: false,

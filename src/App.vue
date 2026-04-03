@@ -73,6 +73,8 @@ function onDockReady(event: DockviewReadyEvent) {
   event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', position: { referencePanel: 'imagePanel', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'stretchPreview', component: 'StretchPreview', title: '拉伸预览', position: { referencePanel: 'imageEditor', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'cutPreview', component: 'CutPreview', title: '裁切结果', position: { referencePanel: 'imagePanel', direction: 'below' } } as AddPanelOptions)
+  event.api.addPanel({ id: 'alphaBleedingPreview', component: 'AlphaBleedingPreview', title: 'Bleeding 预览', position: { referencePanel: 'cutPreview' } } as AddPanelOptions)
+  event.api.getPanel('cutPreview')!.api.setActive()
 }
 
 function resetLayout() {
