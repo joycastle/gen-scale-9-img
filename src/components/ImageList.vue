@@ -144,7 +144,22 @@ function processFiles(files: File[]) {
     const newItems = results
       .filter((r): r is PromiseFulfilledResult<ImageItem> => r.status === 'fulfilled')
       .map(r => r.value)
-    if (newItems.length > 0) store.addItems(newItems)
+
+    const existingNames = new Set(store.items.value.map(i => i.name))
+    const duplicates: string[] = []
+    const unique: ImageItem[] = []
+    for (const item of newItems) {
+      if (existingNames.has(item.name)) {
+        duplicates.push(item.name)
+      } else {
+        existingNames.add(item.name)
+        unique.push(item)
+      }
+    }
+    if (duplicates.length > 0) {
+      alert(`以下图片已存在，跳过：\n${duplicates.join('\n')}`)
+    }
+    if (unique.length > 0) store.addItems(unique)
   })
 }
 

@@ -4,7 +4,7 @@ import { sliceRegionToBorder } from './types'
 import { exportSlice9, downloadBlob } from './utils/imageExport'
 import { useDarkMode } from './composables/useDarkMode'
 import { useAppStore } from './composables/useAppStore'
-import { DockviewVue } from 'dockview-vue'
+import { DockviewVue, themeDark, themeLight } from 'dockview-vue'
 import type { DockviewReadyEvent, DockviewApi, AddPanelOptions } from 'dockview-vue'
 import 'dockview-vue/dist/styles/dockview.css'
 import HelpDialog from './components/HelpDialog.vue'
@@ -17,6 +17,12 @@ import { ref } from 'vue'
 const showHelpRef = ref(false)
 
 let dockApi: DockviewApi | null = null
+
+// 生成导出文件名：名字中已包含 .9 则不再追加（兼容 .9@3x.png 等蓝湖格式）
+function toSlice9Name(name: string): string {
+  const base = name.replace(/\.png$/i, '')
+  return base.includes('.9') ? base + '.png' : base + '.9.png'
+}
 
 function generateBorderConfig(): string {
   const config: Record<string, { top: number; bottom: number; left: number; right: number }> = {}
@@ -32,7 +38,7 @@ async function exportCurrent() {
   const item = store.currentItem.value
   if (!item) return
   const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
-  downloadBlob(blob, item.name.replace(/\.png$/i, '') + '.9.png')
+  downloadBlob(blob, toSlice9Name(item.name))
   const configName = item.name.replace(/\.png$/i, '')
   const border = sliceRegionToBorder(item.sliceRegion, item.image.naturalWidth, item.image.naturalHeight)
   downloadBlob(new Blob([JSON.stringify({ [configName]: border }, null, 2)], { type: 'application/json' }), configName + '.border.json')
@@ -44,7 +50,7 @@ async function exportAll() {
   const zip = new JSZip()
   for (const item of store.items.value) {
     const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
-    zip.file(item.name.replace(/\.png$/i, '') + '.9.png', blob)
+    zip.file(toSlice9Name(item.name), blob)
   }
   zip.file('border-config.json', generateBorderConfig())
   downloadBlob(await zip.generateAsync({ type: 'blob' }), 'slice9-export.zip')
@@ -69,12 +75,13 @@ function onDockReady(event: DockviewReadyEvent) {
     } catch { /* fall through */ }
   }
 
-  event.api.addPanel({ id: 'imageList', component: 'ImageList', title: '图片列表' })
+  event.api.addPanel({ id: 'imageList', component: 'ImageList', title: '图片列表' } as AddPanelOptions)
   event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', position: { referencePanel: 'imageList', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'stretchPreview', component: 'StretchPreview', title: '拉伸预览', position: { referencePanel: 'imageEditor', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'cutPreview', component: 'CutPreview', title: '裁切结果', position: { referencePanel: 'imageList', direction: 'below' } } as AddPanelOptions)
   event.api.addPanel({ id: 'alphaBleedingPreview', component: 'AlphaBleedingPreview', title: 'Bleeding 预览', position: { referencePanel: 'cutPreview' } } as AddPanelOptions)
   event.api.getPanel('cutPreview')!.api.setActive()
+  event.api.getPanel('imageList')!.api.setActive()
 }
 
 function resetLayout() {
@@ -120,7 +127,7 @@ onMounted(() => initDark())
 
     <div class="flex-1 min-h-0">
       <DockviewVue
-        :class="isDark ? 'dockview-theme-dark' : 'dockview-theme-light'"
+        :theme="isDark ? themeDark : themeLight"
         class="dv-custom"
         @ready="onDockReady"
       />
@@ -131,35 +138,7 @@ onMounted(() => initDark())
 </template>
 
 <style>
-.dv-custom { height: 100%; }
-
+.dv-custom { height: 100%; width: 100%; }
 /* Hide close buttons on all tabs */
 .dv-tab .dv-default-tab .dv-default-tab-action { display: none !important; }
-
-/* Light theme overrides - target elements directly */
-.dockview-theme-light .dv-tabs-and-actions-container {
-  background-color: #f3f3f3 !important;
-}
-.dockview-theme-light .dv-groupview {
-  background-color: white !important;
-}
-.dockview-theme-light .dv-active-group .dv-tabs-container > .dv-active-tab {
-  background-color: white !important;
-  color: rgb(51, 51, 51) !important;
-}
-.dockview-theme-light .dv-active-group .dv-tabs-container > .dv-inactive-tab {
-  background-color: #ececec !important;
-  color: rgba(51, 51, 51, 0.7) !important;
-}
-.dockview-theme-light .dv-inactive-group .dv-tabs-container > .dv-active-tab {
-  background-color: white !important;
-  color: rgba(51, 51, 51, 0.7) !important;
-}
-.dockview-theme-light .dv-inactive-group .dv-tabs-container > .dv-inactive-tab {
-  background-color: #ececec !important;
-  color: rgba(51, 51, 51, 0.35) !important;
-}
-.dockview-theme-light .dv-content-container {
-  background-color: white !important;
-}
 </style>
