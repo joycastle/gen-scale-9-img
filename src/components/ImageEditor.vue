@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import type { SliceRegion } from '../types'
+import { getImageSize as imgSize } from '../utils/sliceAlgorithm'
 import { useDragInteraction } from '../composables/useDragInteraction'
 import { useAppStore } from '../composables/useAppStore'
+import { getCheckerPattern as getChecker } from '../utils/canvasPattern'
+
+const props = defineProps<{
+  params?: {
+    api?: {
+      onDidActiveChange?: (cb: (e: { isActive: boolean }) => void) => { dispose: () => void }
+      isActive?: boolean
+      setActive?: () => void
+    }
+  }
+}>()
 
 const store = useAppStore()
 const item = computed(() => store.currentItem.value)
@@ -11,6 +23,18 @@ const dark = computed(() => store.isDark.value)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
+const panelActive = ref(false)
+
+let activeSub: { dispose: () => void } | undefined
+onMounted(() => {
+  if (props.params?.api?.onDidActiveChange) {
+    panelActive.value = !!props.params.api.isActive
+    activeSub = props.params.api.onDidActiveChange((e) => {
+      panelActive.value = e.isActive
+    })
+  }
+})
+onBeforeUnmount(() => activeSub?.dispose())
 
 // 缩放与平移状态
 const zoomLevel = ref(1)
@@ -38,22 +62,22 @@ watch(() => item.value?.id, () => {
 
 watch(() => sliceRegion.value, (r) => {
   if (r && item.value) {
-    const img = item.value.image
+    const { width, height } = imgSize(item.value.image)
     borderTop.value = r.top
-    borderBottom.value = img.naturalHeight - r.bottom
+    borderBottom.value = height - r.bottom
     borderLeft.value = r.left
-    borderRight.value = img.naturalWidth - r.right
+    borderRight.value = width - r.right
   }
 }, { immediate: true, deep: true })
 
 function applyBorderInput() {
   if (!item.value) return
-  const img = item.value.image
+  const { width, height } = imgSize(item.value.image)
   const region: SliceRegion = {
     left: Math.max(0, borderLeft.value),
-    right: Math.min(img.naturalWidth - 1, img.naturalWidth - borderRight.value),
+    right: Math.min(width - 1, width - borderRight.value),
     top: Math.max(0, borderTop.value),
-    bottom: Math.min(img.naturalHeight - 1, img.naturalHeight - borderBottom.value),
+    bottom: Math.min(height - 1, height - borderBottom.value),
   }
   if (region.right < region.left) region.right = region.left
   if (region.bottom < region.top) region.bottom = region.top
@@ -83,16 +107,23 @@ function getOffset() {
 
 function getImageSize() {
   if (!item.value) return null
-  return { width: item.value.image.naturalWidth, height: item.value.image.naturalHeight }
+  return imgSize(item.value.image)
 }
 
 const drag = useDragInteraction(
   () => canvasRef.value,
+  () => panelActive.value,
   () => sliceRegion.value,
   getImageSize,
   getScale,
   getOffset,
-  (updated) => store.updateRegion(updated),
+  (updated) => store.updateRegionSilent(updated),
+  () => props.params?.api?.setActive?.(),
+  () => store.pushUndoSnapshot(),
+  () => {},
+  () => store.undo(),
+  () => store.redo(),
+  fitToView,
 )
 
 // 滚轮缩放
@@ -124,8 +155,8 @@ function fitToView() {
   if (!container || !currentImg) return
   const cw = container.clientWidth - RULER_SIZE - 20
   const ch = container.clientHeight - RULER_SIZE - 20
-  const iw = currentImg.image.naturalWidth
-  const ih = currentImg.image.naturalHeight
+  const iw = imgSize(currentImg.image).width
+  const ih = imgSize(currentImg.image).height
   const scale = Math.min(cw / iw, ch / ih, 4)
   zoomLevel.value = scale
   panOffset.value = {
@@ -135,24 +166,18 @@ function fitToView() {
   nextTick(drawCanvas)
 }
 
-// 棋盘格图案（缓存，适配暗色模式）
-let checkerPattern: CanvasPattern | null = null
-let checkerDark = false
-function getCheckerPattern(ctx: CanvasRenderingContext2D): CanvasPattern {
-  if (checkerPattern && checkerDark === dark.value) return checkerPattern
-  checkerDark = dark.value
-  const pc = document.createElement('canvas')
-  pc.width = 16; pc.height = 16
-  const pctx = pc.getContext('2d')!
-  if (dark.value) {
-    pctx.fillStyle = '#1f2937'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#374151'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  } else {
-    pctx.fillStyle = '#fafafa'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#f0f0f0'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  }
-  checkerPattern = ctx.createPattern(pc, 'repeat')!
-  return checkerPattern
+// 条纹图案（缓存）
+let stripePatternCached: CanvasPattern | null = null
+function getStripePattern(ctx: CanvasRenderingContext2D): CanvasPattern {
+  if (stripePatternCached) return stripePatternCached
+  const sc = document.createElement('canvas')
+  sc.width = 8; sc.height = 8
+  const sctx = sc.getContext('2d')!
+  sctx.strokeStyle = 'rgba(59, 130, 246, 0.12)'
+  sctx.lineWidth = 1
+  sctx.beginPath(); sctx.moveTo(0, 8); sctx.lineTo(8, 0); sctx.stroke()
+  stripePatternCached = ctx.createPattern(sc, 'repeat')!
+  return stripePatternCached
 }
 
 // 绘制画布
@@ -176,13 +201,13 @@ function drawCanvas() {
   ctx.clearRect(0, 0, cw, ch)
 
   // 背景
-  ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
+  ctx.fillStyle = dark.value ? '#181818' : '#f3f4f6'
   ctx.fillRect(0, 0, cw, ch)
 
   const s = zoomLevel.value
   const o = getOffset()
-  const iw = currentImg.image.naturalWidth
-  const ih = currentImg.image.naturalHeight
+  const iw = imgSize(currentImg.image).width
+  const ih = imgSize(currentImg.image).height
 
   // --- 绘制图片区域 ---
   ctx.save()
@@ -195,7 +220,7 @@ function drawCanvas() {
   ctx.beginPath()
   ctx.rect(o.x, o.y, iw * s, ih * s)
   ctx.clip()
-  ctx.fillStyle = getCheckerPattern(ctx)
+  ctx.fillStyle = getChecker(ctx, dark.value)
   ctx.fillRect(o.x, o.y, iw * s, ih * s)
   ctx.restore()
 
@@ -242,14 +267,7 @@ function drawCanvas() {
     ctx.fillRect(rx, ry, rw, rh)
 
     // 条纹图案
-    const stripeCanvas = document.createElement('canvas')
-    stripeCanvas.width = 8; stripeCanvas.height = 8
-    const sctx = stripeCanvas.getContext('2d')!
-    sctx.strokeStyle = 'rgba(59, 130, 246, 0.12)'
-    sctx.lineWidth = 1
-    sctx.beginPath(); sctx.moveTo(0, 8); sctx.lineTo(8, 0); sctx.stroke()
-    const stripePattern = ctx.createPattern(stripeCanvas, 'repeat')!
-    ctx.fillStyle = stripePattern
+    ctx.fillStyle = getStripePattern(ctx)
     ctx.fillRect(rx, ry, rw, rh)
     ctx.restore()
 
@@ -334,15 +352,15 @@ function drawRulers(
   o: { x: number; y: number }, s: number, iw: number, ih: number,
 ) {
   // 标尺背景
-  ctx.fillStyle = dark.value ? '#1f2937' : '#f9fafb'
+  ctx.fillStyle = dark.value ? '#252526' : '#f9fafb'
   ctx.fillRect(0, 0, cw, RULER_SIZE)
   ctx.fillRect(0, 0, RULER_SIZE, ch)
-  ctx.fillStyle = dark.value ? '#374151' : '#e5e7eb'
+  ctx.fillStyle = dark.value ? '#444444' : '#e5e7eb'
   ctx.fillRect(0, RULER_SIZE, cw, 1)
   ctx.fillRect(RULER_SIZE, 0, 1, ch)
 
   // 角落
-  ctx.fillStyle = dark.value ? '#111827' : '#f3f4f6'
+  ctx.fillStyle = dark.value ? '#1e1e1e' : '#f3f4f6'
   ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE)
 
   // 根据缩放选择刻度间距
@@ -429,6 +447,15 @@ function onPanMove(e: MouseEvent) {
   }
 }
 
+function onPanDown(e: MouseEvent) {
+  if (e.button === 1) {
+    isPanning.value = true
+    panStart = { x: e.clientX, y: e.clientY }
+    panStartOffset = { ...panOffset.value }
+    e.preventDefault()
+  }
+}
+
 function onPanUp(e: MouseEvent) {
   if (e.button === 1) {
     isPanning.value = false
@@ -439,14 +466,7 @@ onMounted(() => {
   // 平移监听 — 仅响应鼠标中键
   const container = containerRef.value
   if (container) {
-    container.addEventListener('mousedown', (e: MouseEvent) => {
-      if (e.button === 1) {
-        isPanning.value = true
-        panStart = { x: e.clientX, y: e.clientY }
-        panStartOffset = { ...panOffset.value }
-        e.preventDefault()
-      }
-    })
+    container.addEventListener('mousedown', onPanDown)
     window.addEventListener('mousemove', onPanMove)
     window.addEventListener('mouseup', onPanUp)
   }
@@ -456,24 +476,34 @@ onMounted(() => {
   if (container) resizeObserver.observe(container)
 })
 
-onUnmounted(() => {
-  window.removeEventListener('mousemove', onPanMove)
-  window.removeEventListener('mouseup', onPanUp)
-  resizeObserver?.disconnect()
-})
-
 // 画布可用时绑定拖拽交互
 let dragAttached = false
 watch(canvasRef, (canvas) => {
   if (canvas && !dragAttached) {
     drag.attach(canvas)
     dragAttached = true
+  } else if (!canvas) {
+    dragAttached = false
+  }
+})
+
+onUnmounted(() => {
+  const container = containerRef.value
+  if (container) {
+    container.removeEventListener('mousedown', onPanDown)
+  }
+  window.removeEventListener('mousemove', onPanMove)
+  window.removeEventListener('mouseup', onPanUp)
+  resizeObserver?.disconnect()
+  if (canvasRef.value) {
+    drag.detach(canvasRef.value)
   }
 })
 
 const imageSizeText = computed(() => {
   if (!item.value) return ''
-  return `${item.value.image.naturalWidth} x ${item.value.image.naturalHeight}`
+  const { width, height } = imgSize(item.value.image)
+  return `${width} x ${height}`
 })
 
 const canvasCursor = computed(() => {
@@ -484,9 +514,9 @@ const canvasCursor = computed(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-800">
+  <div class="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
     <!-- Panel title -->
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 flex-shrink-0">
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#252526] flex-shrink-0">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -496,14 +526,14 @@ const canvasCursor = computed(() => {
       </div>
       <div v-if="item" class="flex items-center gap-2">
         <button
-          class="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded transition-colors text-gray-600 dark:text-gray-300"
+          class="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-[#3c3c3c] dark:hover:bg-[#505050] rounded transition-colors text-gray-600 dark:text-gray-300"
           @click="fitToView"
           title="适应窗口"
         >
           适应
         </button>
         <button
-          class="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded transition-colors text-gray-600 dark:text-gray-300"
+          class="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-[#3c3c3c] dark:hover:bg-[#505050] rounded transition-colors text-gray-600 dark:text-gray-300"
           @click="onRecompute"
           title="重新计算裁切区域"
         >
@@ -513,7 +543,7 @@ const canvasCursor = computed(() => {
     </div>
 
     <!-- Toolbar -->
-    <div v-if="item" class="flex flex-wrap items-center gap-3 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0 text-xs">
+    <div v-if="item" class="flex flex-wrap items-center gap-3 px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-white dark:bg-[#1e1e1e] flex-shrink-0 text-xs">
       <div class="flex items-center gap-1">
         <label class="text-gray-500 dark:text-gray-400 font-medium">容差:</label>
         <input
@@ -524,26 +554,26 @@ const canvasCursor = computed(() => {
         <span class="text-gray-400 dark:text-gray-500 w-5 text-right font-mono">{{ localTolerance }}</span>
       </div>
 
-      <div class="w-px h-4 bg-gray-200 dark:bg-gray-600" />
+      <div class="w-px h-4 bg-gray-200 dark:bg-[#444]" />
 
       <!-- Border TBLR inputs (Cocos style) -->
       <div class="flex items-center gap-1.5">
         <label class="text-gray-500 dark:text-gray-400 font-medium">Border</label>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">T</span>
-          <input type="number" v-model.number="borderTop" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
+          <input type="number" v-model.number="borderTop" class="w-16 border border-gray-200 dark:border-[#444] dark:bg-[#3c3c3c] dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">B</span>
-          <input type="number" v-model.number="borderBottom" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
+          <input type="number" v-model.number="borderBottom" class="w-16 border border-gray-200 dark:border-[#444] dark:bg-[#3c3c3c] dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">L</span>
-          <input type="number" v-model.number="borderLeft" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
+          <input type="number" v-model.number="borderLeft" class="w-16 border border-gray-200 dark:border-[#444] dark:bg-[#3c3c3c] dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-gray-400 dark:text-gray-500">R</span>
-          <input type="number" v-model.number="borderRight" class="w-16 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
+          <input type="number" v-model.number="borderRight" class="w-16 border border-gray-200 dark:border-[#444] dark:bg-[#3c3c3c] dark:text-white rounded px-1 text-center font-mono focus:border-blue-400 focus:outline-none" @change="applyBorderInput" />
         </div>
       </div>
     </div>
@@ -553,7 +583,6 @@ const canvasCursor = computed(() => {
       ref="containerRef"
       class="flex-1 min-h-0 relative overflow-hidden"
       @wheel.prevent="onWheel"
-      @dblclick="fitToView"
     >
       <canvas
         v-if="item"

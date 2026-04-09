@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
+import { getCheckerPattern } from '../utils/canvasPattern'
+import { getImageSize } from '../utils/sliceAlgorithm'
 
 const store = useAppStore()
 const item = computed(() => store.currentItem.value)
@@ -20,25 +22,6 @@ let edgeDragStart = { x: 0, y: 0, w: 0, h: 0 }
 
 const EDGE_HIT = 6
 
-let checkerPattern: CanvasPattern | null = null
-let checkerDark = false
-function getChecker(ctx: CanvasRenderingContext2D): CanvasPattern {
-  if (checkerPattern && checkerDark === dark.value) return checkerPattern
-  checkerDark = dark.value
-  const pc = document.createElement('canvas')
-  pc.width = 16; pc.height = 16
-  const pctx = pc.getContext('2d')!
-  if (dark.value) {
-    pctx.fillStyle = '#1f2937'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#374151'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  } else {
-    pctx.fillStyle = '#fafafa'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#f0f0f0'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  }
-  checkerPattern = ctx.createPattern(pc, 'repeat')!
-  return checkerPattern
-}
-
 // 计算显示区域
 function getDisplayBounds() {
   const container = containerRef.value
@@ -52,9 +35,9 @@ function getDisplayBounds() {
   const ph = previewHeight.value
 
   const leftW = left + 1
-  const rightW = img.naturalWidth - right
+  const rightW = getImageSize(img).width - right
   const topH = top + 1
-  const bottomH = img.naturalHeight - bottom
+  const bottomH = getImageSize(img).height - bottom
 
   const centerDW = Math.max(0, pw - leftW - rightW)
   const centerDH = Math.max(0, ph - topH - bottomH)
@@ -119,7 +102,7 @@ function draw() {
   ctx.beginPath()
   ctx.rect(x0, y0, x3 - x0, y3 - y0)
   ctx.clip()
-  ctx.fillStyle = getChecker(ctx)
+  ctx.fillStyle = getCheckerPattern(ctx, dark.value)
   ctx.fillRect(x0, y0, x3 - x0, y3 - y0)
   ctx.restore()
 
@@ -232,9 +215,9 @@ function onMouseMove(e: MouseEvent) {
     const region = sliceRegion.value
     if (!currentImg || !region) return
     const leftW = region.left + 1
-    const rightW = currentImg.image.naturalWidth - region.right
+    const rightW = getImageSize(currentImg.image).width - region.right
     const topH = region.top + 1
-    const bottomH = currentImg.image.naturalHeight - region.bottom
+    const bottomH = getImageSize(currentImg.image).height - region.bottom
     const minW = leftW + rightW
     const minH = topH + bottomH
 
@@ -271,9 +254,9 @@ watch(() => item.value?.id, () => {
   const region = sliceRegion.value
   if (currentImg && region) {
     const leftW = region.left + 1
-    const rightW = currentImg.image.naturalWidth - region.right
+    const rightW = getImageSize(currentImg.image).width - region.right
     const topH = region.top + 1
-    const bottomH = currentImg.image.naturalHeight - region.bottom
+    const bottomH = getImageSize(currentImg.image).height - region.bottom
     previewWidth.value = leftW + rightW + 4
     previewHeight.value = topH + bottomH + 4
   }
@@ -300,10 +283,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-800">
+  <div class="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
     <div
       ref="containerRef"
-      class="flex-1 min-h-0 relative bg-gray-50 dark:bg-gray-900"
+      class="flex-1 min-h-0 relative bg-gray-50 dark:bg-[#181818]"
       @mousedown="onMouseDown"
     >
       <canvas

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { sliceRegionToBorder } from './types'
+import { onMounted, ref } from 'vue'
+import { sliceRegionToBorder, getImageSize } from './utils/sliceAlgorithm'
 import { exportSlice9, downloadBlob } from './utils/imageExport'
 import { useDarkMode } from './composables/useDarkMode'
 import { useAppStore } from './composables/useAppStore'
@@ -12,9 +12,10 @@ import JSZip from 'jszip'
 
 const { isDark, init: initDark, toggle: toggleDark } = useDarkMode()
 const store = useAppStore()
+const version = __APP_VERSION__
 
-import { ref } from 'vue'
 const showHelpRef = ref(false)
+const exporting = ref(false)
 
 let dockApi: DockviewApi | null = null
 
@@ -28,7 +29,8 @@ function generateBorderConfig(): string {
   const config: Record<string, { top: number; bottom: number; left: number; right: number }> = {}
   for (const item of store.items.value) {
     const name = item.name.replace(/\.png$/i, '')
-    const border = sliceRegionToBorder(item.sliceRegion, item.image.naturalWidth, item.image.naturalHeight)
+    const { width, height } = getImageSize(item.image)
+    const border = sliceRegionToBorder(item.sliceRegion, width, height)
     config[name] = border
   }
   return JSON.stringify(config, null, 2)
@@ -36,24 +38,35 @@ function generateBorderConfig(): string {
 
 async function exportCurrent() {
   const item = store.currentItem.value
-  if (!item) return
-  const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
-  downloadBlob(blob, toSlice9Name(item.name))
-  const configName = item.name.replace(/\.png$/i, '')
-  const border = sliceRegionToBorder(item.sliceRegion, item.image.naturalWidth, item.image.naturalHeight)
-  downloadBlob(new Blob([JSON.stringify({ [configName]: border }, null, 2)], { type: 'application/json' }), configName + '.border.json')
+  if (!item || exporting.value) return
+  exporting.value = true
+  try {
+    const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
+    downloadBlob(blob, toSlice9Name(item.name))
+    const configName = item.name.replace(/\.png$/i, '')
+    const { width, height } = getImageSize(item.image)
+    const border = sliceRegionToBorder(item.sliceRegion, width, height)
+    downloadBlob(new Blob([JSON.stringify({ [configName]: border }, null, 2)], { type: 'application/json' }), configName + '.border.json')
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function exportAll() {
-  if (store.items.value.length === 0) return
+  if (store.items.value.length === 0 || exporting.value) return
   if (store.items.value.length === 1) { await exportCurrent(); return }
-  const zip = new JSZip()
-  for (const item of store.items.value) {
-    const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
-    zip.file(toSlice9Name(item.name), blob)
+  exporting.value = true
+  try {
+    const zip = new JSZip()
+    for (const item of store.items.value) {
+      const blob = await exportSlice9(item.image, item.sliceRegion, store.enableAlphaBleeding.value)
+      zip.file(toSlice9Name(item.name), blob)
+    }
+    zip.file('border-config.json', generateBorderConfig())
+    downloadBlob(await zip.generateAsync({ type: 'blob' }), 'slice9-export.zip')
+  } finally {
+    exporting.value = false
   }
-  zip.file('border-config.json', generateBorderConfig())
-  downloadBlob(await zip.generateAsync({ type: 'blob' }), 'slice9-export.zip')
 }
 
 const LAYOUT_KEY = 'slice9-dock-layout'
@@ -93,8 +106,8 @@ onMounted(() => initDark())
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
-    <header class="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm flex-shrink-0">
+  <div class="h-screen flex flex-col bg-gray-100 dark:bg-[#1e1e1e]">
+    <header class="flex items-center justify-between px-4 py-2 bg-white dark:bg-[#252526] border-b border-gray-200 dark:border-[#444] shadow-sm flex-shrink-0">
       <div class="flex items-center gap-2.5">
         <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm">
           <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,24 +115,25 @@ onMounted(() => initDark())
           </svg>
         </div>
         <h1 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Slice9 Editor</h1>
+        <span class="text-xs text-gray-400 dark:text-gray-500">v{{ version }}</span>
       </div>
       <div class="flex items-center gap-2.5">
         <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
           <input type="checkbox" v-model="store.enableAlphaBleeding.value" class="accent-blue-500 w-3.5 h-3.5" />
           Alpha Bleeding
         </label>
-        <div class="w-px h-5 bg-gray-200 dark:bg-gray-600" />
-        <button v-if="store.currentItem.value" class="px-3 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors shadow-sm" @click="exportCurrent">导出当前</button>
-        <button v-if="store.items.value.length > 1" class="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-md transition-colors shadow-sm" @click="exportAll">批量导出 ({{ store.items.value.length }})</button>
-        <div class="w-px h-5 bg-gray-200 dark:bg-gray-600" />
-        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="resetLayout" title="重置布局">
+        <div class="w-px h-5 bg-gray-200 dark:bg-[#444]" />
+        <button v-if="store.currentItem.value" :disabled="exporting" class="px-3 py-1.5 text-xs font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors shadow-sm disabled:opacity-50" @click="exportCurrent">{{ exporting ? '导出中...' : '导出当前' }}</button>
+        <button v-if="store.items.value.length > 1" :disabled="exporting" class="px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-md transition-colors shadow-sm disabled:opacity-50" @click="exportAll">{{ exporting ? '导出中...' : `批量导出 (${store.items.value.length})` }}</button>
+        <div class="w-px h-5 bg-gray-200 dark:bg-[#444]" />
+        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-[#3c3c3c] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="resetLayout" title="重置布局">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
         </button>
-        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="toggleDark" :title="isDark ? '亮色模式' : '暗色模式'">
+        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-[#3c3c3c] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="toggleDark" :title="isDark ? '亮色模式' : '暗色模式'">
           <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
           <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
         </button>
-        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="showHelpRef = true" title="使用说明">
+        <button class="w-7 h-7 rounded-md hover:bg-gray-100 dark:hover:bg-[#3c3c3c] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" @click="showHelpRef = true" title="使用说明">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         </button>
       </div>

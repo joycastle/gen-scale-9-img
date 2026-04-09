@@ -15,18 +15,9 @@ export interface BorderConfig {
 export interface ImageItem {
   id: string
   name: string
-  image: HTMLImageElement
+  image: HTMLImageElement | ImageBitmap
   imageData: ImageData
   sliceRegion: SliceRegion
   alphaBleeding: boolean
   tolerance: number
-}
-
-export function sliceRegionToBorder(region: SliceRegion, imgWidth: number, imgHeight: number): BorderConfig {
-  return {
-    top: region.top,
-    bottom: imgHeight - region.bottom,
-    left: region.left,
-    right: imgWidth - region.right,
-  }
 }

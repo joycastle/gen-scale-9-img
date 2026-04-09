@@ -1,4 +1,18 @@
-import type { SliceRegion } from '../types'
+import type { SliceRegion, BorderConfig } from '../types'
+
+export function getImageSize(image: HTMLImageElement | ImageBitmap): { width: number; height: number } {
+  if (image instanceof HTMLImageElement) return { width: image.naturalWidth, height: image.naturalHeight }
+  return { width: image.width, height: image.height }
+}
+
+export function sliceRegionToBorder(region: SliceRegion, imgWidth: number, imgHeight: number): BorderConfig {
+  return {
+    top: region.top,
+    bottom: imgHeight - region.bottom,
+    left: region.left,
+    right: imgWidth - region.right,
+  }
+}
 
 function columnsAreSimilar(
   data: Uint8ClampedArray,
@@ -123,17 +137,18 @@ export function computeSliceRegion(
   return { left, right, top, bottom }
 }
 
-export function getImageDataFromImage(image: HTMLImageElement): ImageData {
+export function getImageDataFromImage(image: HTMLImageElement | ImageBitmap): ImageData {
   const canvas = document.createElement('canvas')
-  canvas.width = image.naturalWidth
-  canvas.height = image.naturalHeight
+  const { width, height } = getImageSize(image)
+  canvas.width = width
+  canvas.height = height
   const ctx = canvas.getContext('2d')!
   ctx.drawImage(image, 0, 0)
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-// 裁掉四周完全透明的边缘，返回新的 HTMLImageElement（同步，基于 canvas toDataURL）
-export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement> {
+// 裁掉四周完全透明的边缘，返回裁剪后的 ImageBitmap
+export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement | ImageBitmap> {
   const canvas = document.createElement('canvas')
   const w = image.naturalWidth
   const h = image.naturalHeight
@@ -189,9 +204,5 @@ export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement> {
   const tCtx = trimCanvas.getContext('2d')!
   tCtx.drawImage(image, left, top, tw, th, 0, 0, tw, th)
 
-  return new Promise((resolve) => {
-    const trimmed = new Image()
-    trimmed.onload = () => resolve(trimmed)
-    trimmed.src = trimCanvas.toDataURL('image/png')
-  })
+  return createImageBitmap(trimCanvas)
 }

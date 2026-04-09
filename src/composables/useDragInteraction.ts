@@ -7,11 +7,18 @@ const HIT_THRESHOLD_PX = 8
 
 export function useDragInteraction(
   canvasRef: () => HTMLCanvasElement | null,
+  isActive: () => boolean,
   regionRef: () => SliceRegion | null,
   imageSize: () => { width: number; height: number } | null,
   scale: () => number,
   offset: () => { x: number; y: number },
   onUpdate: (region: SliceRegion) => void,
+  onActivate: () => void,
+  onDragStart: () => void,
+  onDragEnd: () => void,
+  onUndo: () => void,
+  onRedo: () => void,
+  onDblClick?: () => void,
 ) {
   const dragging = ref<DragTarget>(null)
   const hovering = ref<DragTarget>(null)
@@ -82,26 +89,50 @@ export function useDragInteraction(
   }
 
   function onMouseDown(e: MouseEvent) {
+    const canvas = canvasRef()
     const region = regionRef()
-    if (!region) return
+    if (!canvas || !region) return
     // 仅响应鼠标左键
     if (e.button !== 0) return
     const { x, y } = toImageCoords(e.clientX, e.clientY)
     const target = detectTarget(x, y, region)
     if (target) {
+      onActivate()
       dragging.value = target
+      onDragStart()
       dragCoord.value = { x: Math.round(x), y: Math.round(y) }
       e.preventDefault()
-      e.stopPropagation()
     }
   }
 
   function onMouseUp() {
+    if (dragging.value) {
+      onDragEnd()
+    }
     dragging.value = null
     dragCoord.value = null
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    const canvas = canvasRef()
+    if (!canvas) return
+    if (!isActive()) return
+    // 不拦截输入框内的快捷键（如原生文本撤销）
+    const tag = (e.target as HTMLElement)?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+    const isMeta = e.metaKey || e.ctrlKey
+    if (isMeta && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      onUndo()
+      return
+    }
+    if (isMeta && e.key === 'z' && e.shiftKey) {
+      e.preventDefault()
+      onRedo()
+      return
+    }
+
     const region = regionRef()
     const target = hovering.value || dragging.value
     if (!region || !target) return
@@ -112,28 +143,36 @@ export function useDragInteraction(
     else return
 
     e.preventDefault()
+    onDragStart()
     const updated = { ...region }
     updated[target] += delta
     onUpdate(clampRegion(updated))
   }
 
+  function onDblClickHandler() {
+    onDblClick?.()
+  }
+
   function attach(canvas: HTMLCanvasElement) {
     canvas.addEventListener('mousemove', onMouseMove)
     canvas.addEventListener('mousedown', onMouseDown)
-    canvas.addEventListener('keydown', onKeyDown)
+    canvas.addEventListener('dblclick', onDblClickHandler)
     canvas.tabIndex = 0
     window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('keydown', onKeyDown)
   }
 
   function detach(canvas: HTMLCanvasElement) {
     canvas.removeEventListener('mousemove', onMouseMove)
     canvas.removeEventListener('mousedown', onMouseDown)
-    canvas.removeEventListener('keydown', onKeyDown)
+    canvas.removeEventListener('dblclick', onDblClickHandler)
     window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('keydown', onKeyDown)
   }
 
   onUnmounted(() => {
     window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('keydown', onKeyDown)
   })
 
   return { dragging, hovering, cursor, dragCoord, attach, detach }

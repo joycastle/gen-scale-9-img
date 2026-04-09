@@ -8,8 +8,8 @@ export function alphaBleeding(imageData: ImageData): ImageData {
 
   // opaque 状态标记:
   //   -1 (0xFF) = 原始不透明像素，可作为颜色源 (& 1 === 1)
-  //   0xFE     = 本轮刚填充，暂不作为颜色源 (& 1 === 0)
-  //   >>= 1 后变为 0x7F，下轮可作为颜色源 (& 1 === 1)
+  //   126       = 本轮刚填充，暂不作为颜色源 (& 1 === 0)
+  //   >>= 1 后变为 63，下轮可作为颜色源 (& 1 === 1)
   const opaque = new Int8Array(N)
   const loose = new Uint8Array(N) // 是否为"远离边界的透明像素"
 

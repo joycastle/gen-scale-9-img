@@ -1,16 +1,16 @@
 import type { SliceRegion } from '../types'
+import { getImageSize } from './sliceAlgorithm'
 import { alphaBleeding } from './alphaBleeding'
 
 const PADDING = 2
 
 export function exportSlice9(
-  image: HTMLImageElement,
+  image: HTMLImageElement | ImageBitmap,
   region: SliceRegion,
   enableAlphaBleeding: boolean,
 ): Promise<Blob> {
   const { left, right, top, bottom } = region
-  const imgW = image.naturalWidth
-  const imgH = image.naturalHeight
+  const { width: imgW, height: imgH } = getImageSize(image)
 
   // 四角尺寸
   const leftW = left + 1
@@ -55,5 +55,5 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

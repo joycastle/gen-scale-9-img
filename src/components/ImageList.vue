@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
 import type { ImageItem } from '../types'
+import { getImageSize } from '../utils/sliceAlgorithm'
 import { computeSliceRegion, getImageDataFromImage, trimImage } from '../utils/sliceAlgorithm'
 import { useAppStore } from '../composables/useAppStore'
 
@@ -12,9 +13,9 @@ function cutThumbSrc(item: ImageItem): string {
   const img = item.image
   const { left, right, top, bottom } = item.sliceRegion
   const leftW = left + 1
-  const rightW = img.naturalWidth - right
+  const rightW = getImageSize(img).width - right
   const topH = top + 1
-  const bottomH = img.naturalHeight - bottom
+  const bottomH = getImageSize(img).height - bottom
   const outW = leftW + rightW + PADDING * 2
   const outH = topH + bottomH + PADDING * 2
   const c = document.createElement('canvas')
@@ -138,9 +139,31 @@ function readDirectory(dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]
   })
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = []
+  let index = 0
+  async function worker() {
+    while (index < items.length) {
+      const i = index++
+      try {
+        results[i] = { status: 'fulfilled', value: await fn(items[i]) } as PromiseFulfilledResult<R>
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason } as PromiseRejectedResult
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
+let processQueue: Promise<void> = Promise.resolve()
 function processFiles(files: File[]) {
-  const promises = files.map(file => loadImage(file))
-  Promise.allSettled(promises).then(results => {
+  processQueue = processQueue.then(async () => {
+    const results = await mapWithConcurrency(files, 3, loadImage)
     const newItems = results
       .filter((r): r is PromiseFulfilledResult<ImageItem> => r.status === 'fulfilled')
       .map(r => r.value)
@@ -193,7 +216,7 @@ function loadImage(file: File): Promise<ImageItem> {
 
 <template>
   <div
-    class="flex flex-col h-full bg-white dark:bg-gray-800 relative"
+    class="flex flex-col h-full bg-white dark:bg-[#1e1e1e] relative"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
@@ -209,7 +232,7 @@ function loadImage(file: File): Promise<ImageItem> {
     </Transition>
 
     <!-- Panel title bar -->
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 flex-shrink-0">
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#252526] flex-shrink-0">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -220,7 +243,7 @@ function loadImage(file: File): Promise<ImageItem> {
       <div class="flex items-center gap-1">
         <!-- Add button -->
         <button
-          class="w-5 h-5 rounded hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          class="w-5 h-5 rounded hover:bg-gray-200 dark:hover:bg-[#3c3c3c] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           @click="fileInputRef?.click()"
           title="添加图片"
         >
@@ -242,7 +265,7 @@ function loadImage(file: File): Promise<ImageItem> {
         <!-- List view -->
         <button
           class="w-5 h-5 rounded flex items-center justify-center transition-colors"
-          :class="viewMode === 'list' ? 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-600 dark:hover:text-gray-300'"
+          :class="viewMode === 'list' ? 'bg-gray-200 dark:bg-[#3c3c3c] text-gray-700 dark:text-gray-200' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-[#3c3c3c] hover:text-gray-600 dark:hover:text-gray-300'"
           @click="setViewMode('list')"
           title="列表视图"
         >
@@ -253,7 +276,7 @@ function loadImage(file: File): Promise<ImageItem> {
         <!-- Grid view -->
         <button
           class="w-5 h-5 rounded flex items-center justify-center transition-colors"
-          :class="viewMode === 'grid' ? 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-600 dark:hover:text-gray-300'"
+          :class="viewMode === 'grid' ? 'bg-gray-200 dark:bg-[#3c3c3c] text-gray-700 dark:text-gray-200' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-[#3c3c3c] hover:text-gray-600 dark:hover:text-gray-300'"
           @click="setViewMode('grid')"
           title="网格视图"
         >
@@ -280,7 +303,7 @@ function loadImage(file: File): Promise<ImageItem> {
         <svg class="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
-        <p class="text-xs">拖拽 PNG 到此处</p>
+        <p class="text-xs">拖拽图片或文件夹到此处</p>
         <p class="text-[10px] mt-0.5 opacity-60">或点击 + 按钮选择</p>
       </div>
 
@@ -295,10 +318,10 @@ function loadImage(file: File): Promise<ImageItem> {
             : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'"
           @click="store.selectItem(item.id)"
         >
-          <div class="aspect-square bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:8px_8px] flex items-center justify-center p-1">
+          <div class="aspect-square bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#3c3c3c_0%_25%,#2d2d2d_0%_50%)] bg-[length:8px_8px] flex items-center justify-center p-1">
             <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
-          <div class="px-1 py-0.5 bg-white dark:bg-gray-800">
+          <div class="px-1 py-0.5 bg-white dark:bg-[#1e1e1e]">
             <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate text-center">{{ item.name }}</p>
           </div>
           <button
@@ -320,15 +343,15 @@ function loadImage(file: File): Promise<ImageItem> {
           class="flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer group transition-colors"
           :class="item.id === store.selectedId.value
             ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-300 dark:ring-blue-700'
-            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'"
+            : 'hover:bg-gray-50 dark:hover:bg-[#2d2d2d]'"
           @click="store.selectItem(item.id)"
         >
-          <div class="w-8 h-8 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#374151_0%_25%,#1f2937_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
+          <div class="w-8 h-8 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#3c3c3c_0%_25%,#2d2d2d_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
             <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ item.name }}</p>
-            <p class="text-[10px] text-gray-400 dark:text-gray-500">{{ item.image.naturalWidth }} x {{ item.image.naturalHeight }}</p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500">{{ getImageSize(item.image).width }} x {{ getImageSize(item.image).height }}</p>
           </div>
           <button
             class="w-4 h-4 flex-shrink-0 rounded-full hover:bg-red-500 text-gray-400 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

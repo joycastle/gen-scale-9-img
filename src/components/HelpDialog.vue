@@ -17,12 +17,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
   <Teleport to="body">
     <div class="fixed inset-0 z-50 flex items-center justify-center" @click.self="emit('close')">
       <div class="absolute inset-0 bg-black/40" />
-      <div class="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+      <div class="relative bg-white dark:bg-[#252526] rounded-xl shadow-2xl max-w-3xl w-full mx-4 max-h-[80vh] overflow-y-auto">
         <!-- Header -->
-        <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 rounded-t-xl z-10">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-[#444] sticky top-0 bg-white dark:bg-[#252526] rounded-t-xl z-10">
           <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Slice9 Editor 使用说明</h2>
           <button
-            class="w-6 h-6 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            class="w-6 h-6 rounded-md hover:bg-gray-100 dark:hover:bg-[#3c3c3c] flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             @click="emit('close')"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

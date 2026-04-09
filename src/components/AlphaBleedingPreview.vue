@@ -2,6 +2,8 @@
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
 import { alphaBleeding } from '../utils/alphaBleeding'
+import { getCheckerPattern } from '../utils/canvasPattern'
+import { getImageSize } from '../utils/sliceAlgorithm'
 
 const store = useAppStore()
 const item = computed(() => store.currentItem.value)
@@ -11,25 +13,6 @@ const bleedingEnabled = computed(() => store.enableAlphaBleeding.value)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
-
-let checkerPattern: CanvasPattern | null = null
-let checkerDark = false
-function getChecker(ctx: CanvasRenderingContext2D): CanvasPattern {
-  if (checkerPattern && checkerDark === dark.value) return checkerPattern
-  checkerDark = dark.value
-  const pc = document.createElement('canvas')
-  pc.width = 16; pc.height = 16
-  const pctx = pc.getContext('2d')!
-  if (dark.value) {
-    pctx.fillStyle = '#1f2937'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#374151'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  } else {
-    pctx.fillStyle = '#fafafa'; pctx.fillRect(0, 0, 16, 16)
-    pctx.fillStyle = '#f0f0f0'; pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8)
-  }
-  checkerPattern = ctx.createPattern(pc, 'repeat')!
-  return checkerPattern
-}
 
 function draw() {
   const canvas = canvasRef.value
@@ -55,9 +38,9 @@ function draw() {
   const PADDING = 2
 
   const leftW = left + 1
-  const rightW = img.naturalWidth - right
+  const rightW = getImageSize(img).width - right
   const topH = top + 1
-  const bottomH = img.naturalHeight - bottom
+  const bottomH = getImageSize(img).height - bottom
 
   const outW = leftW + rightW + PADDING * 2
   const outH = topH + bottomH + PADDING * 2
@@ -96,7 +79,7 @@ function draw() {
   ctx.beginPath()
   ctx.rect(ox, oy, outW * scale, outH * scale)
   ctx.clip()
-  ctx.fillStyle = getChecker(ctx)
+  ctx.fillStyle = getCheckerPattern(ctx, dark.value)
   ctx.fillRect(ox, oy, outW * scale, outH * scale)
   ctx.restore()
 
@@ -138,8 +121,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-800">
-    <div ref="containerRef" class="flex-1 min-h-0 relative bg-gray-50 dark:bg-gray-900">
+  <div class="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
+    <div ref="containerRef" class="flex-1 min-h-0 relative bg-gray-50 dark:bg-[#181818]">
       <canvas v-if="item" ref="canvasRef" class="absolute inset-0" />
       <div v-else class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500 text-xs">Alpha Bleeding 预览</div>
     </div>
