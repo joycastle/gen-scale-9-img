@@ -1,8 +1,9 @@
 import type { SliceRegion, BorderConfig } from '../types'
 
 export function getImageSize(image: HTMLImageElement | ImageBitmap): { width: number; height: number } {
-  if (image instanceof HTMLImageElement) return { width: image.naturalWidth, height: image.naturalHeight }
-  return { width: image.width, height: image.height }
+  const w = image instanceof HTMLImageElement ? image.naturalWidth : image.width
+  const h = image instanceof HTMLImageElement ? image.naturalHeight : image.height
+  return { width: Math.max(w, 1), height: Math.max(h, 1) }
 }
 
 export function sliceRegionToBorder(region: SliceRegion, imgWidth: number, imgHeight: number): BorderConfig {
@@ -22,6 +23,7 @@ function columnsAreSimilar(
   width: number,
   tolerance: number,
 ): boolean {
+  if (width <= 0 || height <= 0) return false
   for (let y = 0; y < height; y++) {
     const i1 = (y * width + col1) * 4
     const i2 = (y * width + col2) * 4
@@ -45,6 +47,7 @@ function rowsAreSimilar(
   stride: number,
   tolerance: number,
 ): boolean {
+  if (width <= 0) return false
   const base1 = row1 * stride
   const base2 = row2 * stride
   for (let x = 0; x < width; x++) {
@@ -142,9 +145,14 @@ export function getImageDataFromImage(image: HTMLImageElement | ImageBitmap): Im
   const { width, height } = getImageSize(image)
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Failed to get 2D context')
   ctx.drawImage(image, 0, 0)
-  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  // 释放临时 canvas 的 GPU 资源
+  canvas.width = 0
+  canvas.height = 0
+  return imageData
 }
 
 // 裁掉四周完全透明的边缘，返回裁剪后的 ImageBitmap
@@ -154,7 +162,8 @@ export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement | I
   const h = image.naturalHeight
   canvas.width = w
   canvas.height = h
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return Promise.resolve(image)
   ctx.drawImage(image, 0, 0)
   const { data } = ctx.getImageData(0, 0, w, h)
 
@@ -186,6 +195,10 @@ export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement | I
     }
   }
 
+  // 释放临时 canvas
+  canvas.width = 0
+  canvas.height = 0
+
   // 无需裁剪
   if (top === 0 && bottom === h - 1 && left === 0 && right === w - 1) {
     return Promise.resolve(image)
@@ -201,8 +214,14 @@ export function trimImage(image: HTMLImageElement): Promise<HTMLImageElement | I
   const trimCanvas = document.createElement('canvas')
   trimCanvas.width = tw
   trimCanvas.height = th
-  const tCtx = trimCanvas.getContext('2d')!
+  const tCtx = trimCanvas.getContext('2d')
+  if (!tCtx) return Promise.resolve(image)
   tCtx.drawImage(image, left, top, tw, th, 0, 0, tw, th)
 
-  return createImageBitmap(trimCanvas)
+  return createImageBitmap(trimCanvas).then(bitmap => {
+    // 释放临时 canvas
+    trimCanvas.width = 0
+    trimCanvas.height = 0
+    return bitmap
+  })
 }

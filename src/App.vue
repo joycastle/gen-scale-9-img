@@ -21,7 +21,9 @@ let dockApi: DockviewApi | null = null
 
 // 生成导出文件名：名字中已包含 .9 则不再追加（兼容 .9@3x.png 等蓝湖格式）
 function toSlice9Name(name: string): string {
-  const base = name.replace(/\.png$/i, '')
+  if (!name) return 'export.9.png'
+  const base = name.replace(/\.png$/i, '').replace(/[\x00-\x1f<>:"|?*]/g, '_')
+  if (!base) return 'export.9.png'
   return base.includes('.9') ? base + '.png' : base + '.9.png'
 }
 
@@ -85,11 +87,14 @@ function onDockReady(event: DockviewReadyEvent) {
     try {
       event.api.fromJSON(JSON.parse(saved))
       return
-    } catch { /* fall through */ }
+    } catch (e) {
+      console.warn('Failed to restore layout, using defaults:', e)
+      localStorage.removeItem(LAYOUT_KEY)
+    }
   }
 
-  event.api.addPanel({ id: 'imageList', component: 'ImageList', title: '图片列表', tabComponent: 'SimpleTab' } as AddPanelOptions)
-  event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', tabComponent: 'SimpleTab', position: { referencePanel: 'imageList', direction: 'right' } } as AddPanelOptions)
+  event.api.addPanel({ id: 'imageList', component: 'ImageList', title: '图片列表', tabComponent: 'SimpleTab', minimumWidth: 360 } as AddPanelOptions)
+  event.api.addPanel({ id: 'imageEditor', component: 'ImageEditor', title: '编辑器', tabComponent: 'SimpleTab', minimumWidth: 600, position: { referencePanel: 'imageList', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'stretchPreview', component: 'StretchPreview', title: '拉伸预览', tabComponent: 'SimpleTab', position: { referencePanel: 'imageEditor', direction: 'right' } } as AddPanelOptions)
   event.api.addPanel({ id: 'cutPreview', component: 'CutPreview', title: '裁切结果', tabComponent: 'SimpleTab', position: { referencePanel: 'imageList', direction: 'below' } } as AddPanelOptions)
   event.api.addPanel({ id: 'alphaBleedingPreview', component: 'AlphaBleedingPreview', title: 'Bleeding 预览', tabComponent: 'SimpleTab', position: { referencePanel: 'cutPreview' } } as AddPanelOptions)

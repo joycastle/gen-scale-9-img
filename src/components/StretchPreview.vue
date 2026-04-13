@@ -13,6 +13,8 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 const previewWidth = ref(300)
 const previewHeight = ref(200)
+const viewScale = ref(1)
+let offscreenCanvas: HTMLCanvasElement | null = null
 
 // 边缘拖拽状态
 type EdgeTarget = 'right' | 'bottom' | 'corner' | null
@@ -46,7 +48,7 @@ function getDisplayBounds() {
 
   const cw = container.clientWidth
   const ch = container.clientHeight
-  const scale = 1
+  const scale = viewScale.value
 
   const ox = (cw - actualW * scale) / 2
   const oy = (ch - actualH * scale) / 2 + 8
@@ -74,7 +76,8 @@ function draw() {
   canvas.style.width = cw + 'px'
   canvas.style.height = ch + 'px'
 
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
   ctx.scale(dpr, dpr)
   ctx.clearRect(0, 0, cw, ch)
 
@@ -84,11 +87,6 @@ function draw() {
   const img = currentImg.image
   const { left, right, top, bottom } = region
   const { x0, y0, x3, y3, scale, leftW, rightW, topH, bottomH, centerDW, centerDH } = bounds
-
-  const x1r = Math.round((cw - bounds.actualW * scale) / 2 + leftW * scale)
-  const x2r = Math.round((cw - bounds.actualW * scale) / 2 + (leftW + centerDW) * scale)
-  const y1r = Math.round((ch - bounds.actualH * scale) / 2 + 8 + topH * scale)
-  const y2r = Math.round((ch - bounds.actualH * scale) / 2 + 8 + (topH + centerDH) * scale)
 
   const centerSW = Math.max(0, right - left - 1)
   const centerSH = Math.max(0, bottom - top - 1)
@@ -106,27 +104,41 @@ function draw() {
   ctx.fillRect(x0, y0, x3 - x0, y3 - y0)
   ctx.restore()
 
-  // 九宫格绘制（像素对齐坐标）
-  // 四角
-  ctx.drawImage(img, 0, 0, leftW, topH, x0, y0, x1r - x0, y1r - y0)
-  ctx.drawImage(img, right, 0, rightW, topH, x2r, y0, x3 - x2r, y1r - y0)
-  ctx.drawImage(img, 0, bottom, leftW, bottomH, x0, y2r, x1r - x0, y3 - y2r)
-  ctx.drawImage(img, right, bottom, rightW, bottomH, x2r, y2r, x3 - x2r, y3 - y2r)
+  // 在离屏 canvas 以 1:1 绘制九宫格，避免缩放产生亚像素接缝
+  if (!offscreenCanvas) offscreenCanvas = document.createElement('canvas')
+  offscreenCanvas.width = bounds.actualW
+  offscreenCanvas.height = bounds.actualH
+  const offCtx = offscreenCanvas.getContext('2d')
+  if (!offCtx) return
 
+  const oLeftW = leftW
+  const oRightX = leftW + centerDW
+  const oTopH = topH
+  const oBottomY = topH + centerDH
+
+  // 四角
+  offCtx.drawImage(img, 0, 0, leftW, topH, 0, 0, oLeftW, oTopH)
+  offCtx.drawImage(img, right, 0, rightW, topH, oRightX, 0, rightW, oTopH)
+  offCtx.drawImage(img, 0, bottom, leftW, bottomH, 0, oBottomY, oLeftW, bottomH)
+  offCtx.drawImage(img, right, bottom, rightW, bottomH, oRightX, oBottomY, rightW, bottomH)
   // 水平边
-  if (x2r - x1r > 0) {
-    ctx.drawImage(img, srcX, 0, srcW, topH, x1r, y0, x2r - x1r, y1r - y0)
-    ctx.drawImage(img, srcX, bottom, srcW, bottomH, x1r, y2r, x2r - x1r, y3 - y2r)
+  if (centerDW > 0) {
+    offCtx.drawImage(img, srcX, 0, srcW, topH, oLeftW, 0, centerDW, oTopH)
+    offCtx.drawImage(img, srcX, bottom, srcW, bottomH, oLeftW, oBottomY, centerDW, bottomH)
   }
   // 垂直边
-  if (y2r - y1r > 0) {
-    ctx.drawImage(img, 0, srcY, leftW, srcH, x0, y1r, x1r - x0, y2r - y1r)
-    ctx.drawImage(img, right, srcY, rightW, srcH, x2r, y1r, x3 - x2r, y2r - y1r)
+  if (centerDH > 0) {
+    offCtx.drawImage(img, 0, srcY, leftW, srcH, 0, oTopH, oLeftW, centerDH)
+    offCtx.drawImage(img, right, srcY, rightW, srcH, oRightX, oTopH, rightW, centerDH)
   }
   // 中心
-  if (x2r - x1r > 0 && y2r - y1r > 0) {
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, x1r, y1r, x2r - x1r, y2r - y1r)
+  if (centerDW > 0 && centerDH > 0) {
+    offCtx.drawImage(img, srcX, srcY, srcW, srcH, oLeftW, oTopH, centerDW, centerDH)
   }
+
+  // 一次性缩放绘制到显示 canvas
+  ctx.imageSmoothingEnabled = scale < 1
+  ctx.drawImage(offscreenCanvas, x0, y0, x3 - x0, y3 - y0)
 
   // 右侧边缘手柄
   const isRightActive = edgeDragging.value === 'right' || edgeDragging.value === 'corner'
@@ -209,7 +221,8 @@ function onMouseMove(e: MouseEvent) {
     const dy = e.clientY - edgeDragStart.y
     const bounds = getDisplayBounds()
     if (!bounds) return
-    const pixelRatio = 1 / bounds.scale
+    // 居中布局下，actualW 增加 1 → 边缘只移动 scale/2，故需 ×2 补偿
+    const pixelRatio = 2 / bounds.scale
 
     const currentImg = item.value
     const region = sliceRegion.value
@@ -257,14 +270,26 @@ watch(() => item.value?.id, () => {
     const rightW = getImageSize(currentImg.image).width - region.right
     const topH = region.top + 1
     const bottomH = getImageSize(currentImg.image).height - region.bottom
-    previewWidth.value = leftW + rightW + 4
-    previewHeight.value = topH + bottomH + 4
+    const initW = leftW + rightW + 4
+    const initH = topH + bottomH + 4
+    previewWidth.value = initW
+    previewHeight.value = initH
+    // 大图缩放至面板约一半大小，留出拖拽空间
+    const cw = containerRef.value?.clientWidth ?? 300
+    const ch = containerRef.value?.clientHeight ?? 200
+    const fitScale = Math.min((cw * 0.5) / initW, (ch * 0.5) / initH)
+    viewScale.value = fitScale < 1 ? fitScale : 1
   }
 })
 
-watch([() => item.value?.id, () => sliceRegion.value, previewWidth, previewHeight, () => dark.value, edgeHovering, edgeDragging], () => {
+watch([
+  () => item.value?.id,
+  () => sliceRegion.value?.left, () => sliceRegion.value?.right,
+  () => sliceRegion.value?.top, () => sliceRegion.value?.bottom,
+  previewWidth, previewHeight, () => dark.value, edgeHovering, edgeDragging,
+], () => {
   nextTick(draw)
-}, { deep: true })
+})
 
 let resizeObserver: ResizeObserver | null = null
 
@@ -279,6 +304,11 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
+  if (offscreenCanvas) {
+    offscreenCanvas.width = 0
+    offscreenCanvas.height = 0
+    offscreenCanvas = null
+  }
 })
 </script>
 

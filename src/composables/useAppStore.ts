@@ -26,8 +26,9 @@ const items = ref<ImageItem[]>([])
 const selectedId = ref<string | null>(null)
 const enableAlphaBleeding = ref(false)
 
-const undoStack: SliceRegion[][] = []
-const redoStack: SliceRegion[][] = []
+interface RegionSnapshot { id: string; region: SliceRegion }
+const undoStack: RegionSnapshot[][] = []
+const redoStack: RegionSnapshot[][] = []
 const { isDark } = useDarkMode()
 
 const currentItem = computed(() =>
@@ -74,8 +75,8 @@ function selectItem(id: string) {
   selectedId.value = id
 }
 
-function snapshotRegions(): SliceRegion[] {
-  return items.value.map(i => ({ ...i.sliceRegion }))
+function snapshotRegions(): RegionSnapshot[] {
+  return items.value.map(i => ({ id: i.id, region: { ...i.sliceRegion } }))
 }
 
 function updateRegion(region: SliceRegion) {
@@ -106,22 +107,25 @@ function recompute(tolerance: number) {
   currentItem.value.tolerance = tolerance
 }
 
+function applySnapshot(snapshot: RegionSnapshot[]) {
+  for (const { id, region } of snapshot) {
+    const item = items.value.find(i => i.id === id)
+    if (item) item.sliceRegion = region
+  }
+}
+
 function undo() {
   if (undoStack.length === 0) return
   const prev = undoStack.pop()!
   redoStack.push(snapshotRegions())
-  prev.forEach((region, idx) => {
-    if (items.value[idx]) items.value[idx].sliceRegion = region
-  })
+  applySnapshot(prev)
 }
 
 function redo() {
   if (redoStack.length === 0) return
   const next = redoStack.pop()!
   undoStack.push(snapshotRegions())
-  next.forEach((region, idx) => {
-    if (items.value[idx]) items.value[idx].sliceRegion = region
-  })
+  applySnapshot(next)
 }
 
 export function useAppStore(): AppStore {

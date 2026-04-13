@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick, computed } from 'vue'
-import type { SliceRegion } from '../types'
 import { getImageSize as imgSize } from '../utils/sliceAlgorithm'
 import { useDragInteraction } from '../composables/useDragInteraction'
 import { useAppStore } from '../composables/useAppStore'
 import { getCheckerPattern as getChecker } from '../utils/canvasPattern'
+import { borderInputsToRegion, regionToBorderInputs } from '../utils/region'
 
 const props = defineProps<{
   params?: {
@@ -34,7 +34,9 @@ onMounted(() => {
     })
   }
 })
-onBeforeUnmount(() => activeSub?.dispose())
+onBeforeUnmount(() => {
+  activeSub?.dispose()
+})
 
 // 缩放与平移状态
 const zoomLevel = ref(1)
@@ -56,33 +58,51 @@ const borderRight = ref(0)
 watch(() => item.value?.id, () => {
   if (item.value) {
     localTolerance.value = item.value.tolerance
+    syncBorderInputs()
     fitToView()
   }
 })
 
-watch(() => sliceRegion.value, (r) => {
-  if (r && item.value) {
-    const { width, height } = imgSize(item.value.image)
-    borderTop.value = r.top
-    borderBottom.value = height - r.bottom
-    borderLeft.value = r.left
-    borderRight.value = width - r.right
-  }
-}, { immediate: true, deep: true })
+watch([
+  () => sliceRegion.value?.left, () => sliceRegion.value?.right,
+  () => sliceRegion.value?.top, () => sliceRegion.value?.bottom,
+], () => {
+  syncBorderInputs()
+}, { immediate: true })
 
-function applyBorderInput() {
-  if (!item.value) return
-  const { width, height } = imgSize(item.value.image)
-  const region: SliceRegion = {
-    left: Math.max(0, borderLeft.value),
-    right: Math.min(width - 1, width - borderRight.value),
-    top: Math.max(0, borderTop.value),
-    bottom: Math.min(height - 1, height - borderBottom.value),
-  }
-  if (region.right < region.left) region.right = region.left
-  if (region.bottom < region.top) region.bottom = region.top
-  store.updateRegion(region)
+function syncBorderInputs() {
+  const current = item.value
+  const region = sliceRegion.value
+  if (!current || !region) return
+  const { width, height } = imgSize(current.image)
+  const borders = regionToBorderInputs(region, width, height)
+  borderTop.value = borders.top
+  borderBottom.value = borders.bottom
+  borderLeft.value = borders.left
+  borderRight.value = borders.right
 }
+
+  function applyBorderInput() {
+    const current = item.value
+    if (!current) return
+    const { width, height } = imgSize(current.image)
+    const result = borderInputsToRegion({
+      top: borderTop.value,
+      bottom: borderBottom.value,
+      left: borderLeft.value,
+      right: borderRight.value,
+    }, width, height)
+    if (result.adjusted) {
+      const borders = regionToBorderInputs(result.region, width, height)
+      borderTop.value = borders.top
+      borderBottom.value = borders.bottom
+      borderLeft.value = borders.left
+      borderRight.value = borders.right
+      store.recompute(current.tolerance)
+      return
+    }
+    store.updateRegion(result.region)
+  }
 
 function onToleranceChange() {
   if (!item.value) return
@@ -128,9 +148,9 @@ const drag = useDragInteraction(
 
 // 滚轮缩放
 function onWheel(e: WheelEvent) {
-  if (!item.value) return
+  if (!item.value || !containerRef.value) return
   e.preventDefault()
-  const rect = containerRef.value!.getBoundingClientRect()
+  const rect = containerRef.value.getBoundingClientRect()
   const mouseX = e.clientX - rect.left
   const mouseY = e.clientY - rect.top
 
@@ -168,15 +188,16 @@ function fitToView() {
 
 // 条纹图案（缓存）
 let stripePatternCached: CanvasPattern | null = null
-function getStripePattern(ctx: CanvasRenderingContext2D): CanvasPattern {
+function getStripePattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
   if (stripePatternCached) return stripePatternCached
   const sc = document.createElement('canvas')
   sc.width = 8; sc.height = 8
-  const sctx = sc.getContext('2d')!
+  const sctx = sc.getContext('2d')
+  if (!sctx) return null
   sctx.strokeStyle = 'rgba(59, 130, 246, 0.12)'
   sctx.lineWidth = 1
   sctx.beginPath(); sctx.moveTo(0, 8); sctx.lineTo(8, 0); sctx.stroke()
-  stripePatternCached = ctx.createPattern(sc, 'repeat')!
+  stripePatternCached = ctx.createPattern(sc, 'repeat')
   return stripePatternCached
 }
 
@@ -196,7 +217,8 @@ function drawCanvas() {
   canvas.style.width = cw + 'px'
   canvas.style.height = ch + 'px'
 
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
   ctx.scale(dpr, dpr)
   ctx.clearRect(0, 0, cw, ch)
 
@@ -267,8 +289,11 @@ function drawCanvas() {
     ctx.fillRect(rx, ry, rw, rh)
 
     // 条纹图案
-    ctx.fillStyle = getStripePattern(ctx)
-    ctx.fillRect(rx, ry, rw, rh)
+    const stripe = getStripePattern(ctx)
+    if (stripe) {
+      ctx.fillStyle = stripe
+      ctx.fillRect(rx, ry, rw, rh)
+    }
     ctx.restore()
 
     // 绘制每条切片线
@@ -431,9 +456,14 @@ function drawRulers(
   ctx.restore()
 }
 
-watch([() => item.value?.id, () => sliceRegion.value, () => drag.hovering.value, () => drag.dragging.value, () => dark.value], () => {
+watch([
+  () => item.value?.id,
+  () => sliceRegion.value?.left, () => sliceRegion.value?.right,
+  () => sliceRegion.value?.top, () => sliceRegion.value?.bottom,
+  () => drag.hovering.value, () => drag.dragging.value, () => dark.value,
+], () => {
   nextTick(drawCanvas)
-}, { deep: true })
+})
 
 let resizeObserver: ResizeObserver | null = null
 
@@ -498,6 +528,7 @@ onUnmounted(() => {
   if (canvasRef.value) {
     drag.detach(canvasRef.value)
   }
+  stripePatternCached = null
 })
 
 const imageSizeText = computed(() => {
@@ -516,7 +547,7 @@ const canvasCursor = computed(() => {
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
     <!-- Panel title -->
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#252526] flex-shrink-0">
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#2d2d2d] flex-shrink-0">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />

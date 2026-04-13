@@ -4,11 +4,31 @@ import type { ImageItem } from '../types'
 import { getImageSize } from '../utils/sliceAlgorithm'
 import { computeSliceRegion, getImageDataFromImage, trimImage } from '../utils/sliceAlgorithm'
 import { useAppStore } from '../composables/useAppStore'
+import { SLICE9_PADDING } from '../utils/imageExport'
 
 const store = useAppStore()
 
-// 生成裁切后的缩略图 dataURL
-const PADDING = 2
+// 裁切后像素面积占原图的比例 (0~1)
+function cutRatio(item: ImageItem): number {
+  const { left, right, top, bottom } = item.sliceRegion
+  const { width, height } = getImageSize(item.image)
+  const outW = (left + 1) + (width - right) + SLICE9_PADDING * 2
+  const outH = (top + 1) + (height - bottom) + SLICE9_PADDING * 2
+  return (outW * outH) / (width * height)
+}
+
+function cutPercent(item: ImageItem): number {
+  return Math.round(cutRatio(item) * 100)
+}
+
+function percentColorClass(pct: number): string {
+  if (pct >= 80) return 'text-red-500 dark:text-red-400'
+  if (pct >= 40) return 'text-amber-500 dark:text-amber-400'
+  return 'text-emerald-500 dark:text-emerald-400'
+}
+
+// 生成裁切后的缩略图 dataURL（复用 canvas 避免重复分配）
+let thumbCanvas: HTMLCanvasElement | null = null
 function cutThumbSrc(item: ImageItem): string {
   const img = item.image
   const { left, right, top, bottom } = item.sliceRegion
@@ -16,16 +36,17 @@ function cutThumbSrc(item: ImageItem): string {
   const rightW = getImageSize(img).width - right
   const topH = top + 1
   const bottomH = getImageSize(img).height - bottom
-  const outW = leftW + rightW + PADDING * 2
-  const outH = topH + bottomH + PADDING * 2
-  const c = document.createElement('canvas')
-  c.width = outW; c.height = outH
-  const ctx = c.getContext('2d')!
-  ctx.drawImage(img, 0, 0, leftW, topH, PADDING, PADDING, leftW, topH)
-  ctx.drawImage(img, right, 0, rightW, topH, leftW + PADDING, PADDING, rightW, topH)
-  ctx.drawImage(img, 0, bottom, leftW, bottomH, PADDING, topH + PADDING, leftW, bottomH)
-  ctx.drawImage(img, right, bottom, rightW, bottomH, leftW + PADDING, topH + PADDING, rightW, bottomH)
-  return c.toDataURL('image/png')
+  const outW = leftW + rightW + SLICE9_PADDING * 2
+  const outH = topH + bottomH + SLICE9_PADDING * 2
+  if (!thumbCanvas) thumbCanvas = document.createElement('canvas')
+  thumbCanvas.width = outW; thumbCanvas.height = outH
+  const ctx = thumbCanvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.drawImage(img, 0, 0, leftW, topH, SLICE9_PADDING, SLICE9_PADDING, leftW, topH)
+  ctx.drawImage(img, right, 0, rightW, topH, leftW + SLICE9_PADDING, SLICE9_PADDING, rightW, topH)
+  ctx.drawImage(img, 0, bottom, leftW, bottomH, SLICE9_PADDING, topH + SLICE9_PADDING, leftW, bottomH)
+  ctx.drawImage(img, right, bottom, rightW, bottomH, leftW + SLICE9_PADDING, topH + SLICE9_PADDING, rightW, bottomH)
+  return thumbCanvas.toDataURL('image/png')
 }
 
 // 缓存 key：id + sliceRegion 序列化
@@ -190,25 +211,37 @@ function loadImage(file: File): Promise<ImageItem> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
+      if (!reader.result) {
+        reject(new Error(`Failed to read file: ${file.name}`))
+        return
+      }
       const img = new Image()
       img.onload = async () => {
-        const trimmed = await trimImage(img)
-        const imageData = getImageDataFromImage(trimmed)
-        const sliceRegion = computeSliceRegion(imageData, 0)
-        resolve({
-          id: crypto.randomUUID(),
-          name: file.name,
-          image: trimmed,
-          imageData,
-          sliceRegion,
-          alphaBleeding: false,
-          tolerance: 0,
-        })
+        if (img.naturalWidth < 3 || img.naturalHeight < 3) {
+          reject(new Error(`Image too small (min 3x3): ${file.name}`))
+          return
+        }
+        try {
+          const trimmed = await trimImage(img)
+          const imageData = getImageDataFromImage(trimmed)
+          const sliceRegion = computeSliceRegion(imageData, 0)
+          resolve({
+            id: crypto.randomUUID(),
+            name: file.name,
+            image: trimmed,
+            imageData,
+            sliceRegion,
+            alphaBleeding: false,
+            tolerance: 0,
+          })
+        } catch (err) {
+          reject(new Error(`Failed to process image: ${file.name}`))
+        }
       }
-      img.onerror = reject
+      img.onerror = () => reject(new Error(`Failed to load image: ${file.name}`))
       img.src = reader.result as string
     }
-    reader.onerror = reject
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`))
     reader.readAsDataURL(file)
   })
 }
@@ -232,7 +265,7 @@ function loadImage(file: File): Promise<ImageItem> {
     </Transition>
 
     <!-- Panel title bar -->
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#252526] flex-shrink-0">
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-[#444] bg-gray-50/80 dark:bg-[#2d2d2d] flex-shrink-0">
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -321,8 +354,9 @@ function loadImage(file: File): Promise<ImageItem> {
           <div class="aspect-square bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#3c3c3c_0%_25%,#2d2d2d_0%_50%)] bg-[length:8px_8px] flex items-center justify-center p-1">
             <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
-          <div class="px-1 py-0.5 bg-white dark:bg-[#1e1e1e]">
-            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate text-center">{{ item.name }}</p>
+          <div class="px-1.5 py-0.5 bg-white dark:bg-[#1e1e1e]">
+            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate">{{ item.name }}</p>
+            <p class="text-xs flex items-center font-mono"><span class="text-gray-400 dark:text-gray-500 min-w-[5.5rem]">{{ getImageSize(item.image).width }} x {{ getImageSize(item.image).height }}</span><span :class="percentColorClass(cutPercent(item))">{{ cutPercent(item) }}%</span></p>
           </div>
           <button
             class="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/40 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -340,18 +374,18 @@ function loadImage(file: File): Promise<ImageItem> {
         <div
           v-for="item in store.items.value"
           :key="item.id"
-          class="flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer group transition-colors"
+          class="flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer group transition-colors"
           :class="item.id === store.selectedId.value
             ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-300 dark:ring-blue-700'
             : 'hover:bg-gray-50 dark:hover:bg-[#2d2d2d]'"
           @click="store.selectItem(item.id)"
         >
-          <div class="w-8 h-8 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#3c3c3c_0%_25%,#2d2d2d_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
+          <div class="w-10 h-10 flex-shrink-0 rounded bg-[repeating-conic-gradient(#f3f4f6_0%_25%,#fff_0%_50%)] dark:bg-[repeating-conic-gradient(#3c3c3c_0%_25%,#2d2d2d_0%_50%)] bg-[length:6px_6px] flex items-center justify-center">
             <img :src="thumbMap[item.id]" :alt="item.name" draggable="false" class="max-w-full max-h-full object-contain" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-xs text-gray-700 dark:text-gray-300 truncate">{{ item.name }}</p>
-            <p class="text-[10px] text-gray-400 dark:text-gray-500">{{ getImageSize(item.image).width }} x {{ getImageSize(item.image).height }}</p>
+            <p class="text-xs flex items-center font-mono"><span class="text-gray-400 dark:text-gray-500 min-w-[5.5rem]">{{ getImageSize(item.image).width }} x {{ getImageSize(item.image).height }}</span><span :class="percentColorClass(cutPercent(item))">{{ cutPercent(item) }}%</span></p>
           </div>
           <button
             class="w-4 h-4 flex-shrink-0 rounded-full hover:bg-red-500 text-gray-400 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

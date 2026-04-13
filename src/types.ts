@@ -1,8 +1,8 @@
 export interface SliceRegion {
-  left: number
-  right: number
   top: number
   bottom: number
+  left: number
+  right: number
 }
 
 export interface BorderConfig {
@@ -20,4 +20,9 @@ export interface ImageItem {
   sliceRegion: SliceRegion
   alphaBleeding: boolean
   tolerance: number
+}
+
+export interface BorderToRegionResult {
+  region: SliceRegion
+  adjusted: boolean
 }

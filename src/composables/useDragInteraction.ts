@@ -1,9 +1,10 @@
 import { ref, onUnmounted } from 'vue'
 import type { SliceRegion } from '../types'
-
-export type DragTarget = 'left' | 'right' | 'top' | 'bottom' | null
+import { clampRegion as clampRegionToBounds } from '../utils/region'
 
 const HIT_THRESHOLD_PX = 8
+
+export type DragTarget = 'left' | 'right' | 'top' | 'bottom' | null
 
 export function useDragInteraction(
   canvasRef: () => HTMLCanvasElement | null,
@@ -30,6 +31,7 @@ export function useDragInteraction(
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
     const s = scale()
+    if (s === 0) return { x: 0, y: 0 }
     const o = offset()
     return {
       x: (clientX - rect.left - o.x) / s,
@@ -57,12 +59,7 @@ export function useDragInteraction(
   function clampRegion(updated: SliceRegion): SliceRegion {
     const size = imageSize()
     if (!size) return updated
-    return {
-      left: Math.max(0, Math.min(updated.left, updated.right)),
-      right: Math.min(size.width - 1, Math.max(updated.right, updated.left)),
-      top: Math.max(0, Math.min(updated.top, updated.bottom)),
-      bottom: Math.min(size.height - 1, Math.max(updated.bottom, updated.top)),
-    }
+    return clampRegionToBounds(updated, size.width, size.height)
   }
 
   function onMouseMove(e: MouseEvent) {
@@ -118,8 +115,10 @@ export function useDragInteraction(
     if (!canvas) return
     if (!isActive()) return
     // 不拦截输入框内的快捷键（如原生文本撤销）
-    const tag = (e.target as HTMLElement)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+    if (e.target instanceof HTMLElement) {
+      const tag = e.target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+    }
 
     const isMeta = e.metaKey || e.ctrlKey
     if (isMeta && e.key === 'z' && !e.shiftKey) {
@@ -132,21 +131,6 @@ export function useDragInteraction(
       onRedo()
       return
     }
-
-    const region = regionRef()
-    const target = hovering.value || dragging.value
-    if (!region || !target) return
-
-    let delta = 0
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') delta = -1
-    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') delta = 1
-    else return
-
-    e.preventDefault()
-    onDragStart()
-    const updated = { ...region }
-    updated[target] += delta
-    onUpdate(clampRegion(updated))
   }
 
   function onDblClickHandler() {

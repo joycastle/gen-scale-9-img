@@ -3,6 +3,7 @@ import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useAppStore } from '../composables/useAppStore'
 import { getCheckerPattern } from '../utils/canvasPattern'
 import { getImageSize } from '../utils/sliceAlgorithm'
+import { SLICE9_PADDING } from '../utils/imageExport'
 
 const store = useAppStore()
 const item = computed(() => store.currentItem.value)
@@ -11,6 +12,7 @@ const dark = computed(() => store.isDark.value)
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
+let offscreenCanvas: HTMLCanvasElement | null = null
 
 function draw() {
   const canvas = canvasRef.value
@@ -27,21 +29,21 @@ function draw() {
   canvas.style.width = cw + 'px'
   canvas.style.height = ch + 'px'
 
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
   ctx.scale(dpr, dpr)
   ctx.clearRect(0, 0, cw, ch)
 
   const img = currentImg.image
   const { left, right, top, bottom } = region
-  const PADDING = 2
 
   const leftW = left + 1
   const rightW = getImageSize(img).width - right
   const topH = top + 1
   const bottomH = getImageSize(img).height - bottom
 
-  const outW = leftW + rightW + PADDING * 2
-  const outH = topH + bottomH + PADDING * 2
+  const outW = leftW + rightW + SLICE9_PADDING * 2
+  const outH = topH + bottomH + SLICE9_PADDING * 2
 
   const scale = Math.min((cw - 20) / outW, (ch - 32) / outH)
   const ox = (cw - outW * scale) / 2
@@ -56,14 +58,23 @@ function draw() {
   ctx.fillRect(ox, oy, outW * scale, outH * scale)
   ctx.restore()
 
-  // 绘制四角
+  // 在离屏 canvas 以 1:1 绘制四角，避免缩放产生亚像素接缝
+  if (!offscreenCanvas) offscreenCanvas = document.createElement('canvas')
+  offscreenCanvas.width = outW
+  offscreenCanvas.height = outH
+  const offCtx = offscreenCanvas.getContext('2d')
+  if (!offCtx) return
+  offCtx.drawImage(img, 0, 0, leftW, topH, SLICE9_PADDING, SLICE9_PADDING, leftW, topH)
+  offCtx.drawImage(img, right, 0, rightW, topH, leftW + SLICE9_PADDING, SLICE9_PADDING, rightW, topH)
+  offCtx.drawImage(img, 0, bottom, leftW, bottomH, SLICE9_PADDING, topH + SLICE9_PADDING, leftW, bottomH)
+  offCtx.drawImage(img, right, bottom, rightW, bottomH, leftW + SLICE9_PADDING, topH + SLICE9_PADDING, rightW, bottomH)
+
+  // 一次性缩放绘制到显示 canvas
   ctx.save()
   ctx.translate(ox, oy)
   ctx.scale(scale, scale)
-  ctx.drawImage(img, 0, 0, leftW, topH, PADDING, PADDING, leftW, topH)
-  ctx.drawImage(img, right, 0, rightW, topH, leftW + PADDING, PADDING, rightW, topH)
-  ctx.drawImage(img, 0, bottom, leftW, bottomH, PADDING, topH + PADDING, leftW, bottomH)
-  ctx.drawImage(img, right, bottom, rightW, bottomH, leftW + PADDING, topH + PADDING, rightW, bottomH)
+  ctx.imageSmoothingEnabled = scale < 1
+  ctx.drawImage(offscreenCanvas, 0, 0)
   ctx.restore()
 
   // 边框
@@ -78,9 +89,14 @@ function draw() {
   ctx.fillText(`${outW} x ${outH}`, cw / 2, oy - 4)
 }
 
-watch([() => item.value?.id, () => sliceRegion.value, () => dark.value], () => {
+watch([
+  () => item.value?.id,
+  () => sliceRegion.value?.left, () => sliceRegion.value?.right,
+  () => sliceRegion.value?.top, () => sliceRegion.value?.bottom,
+  () => dark.value,
+], () => {
   nextTick(draw)
-}, { deep: true })
+})
 
 let resizeObserver: ResizeObserver | null = null
 
@@ -91,6 +107,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
+  if (offscreenCanvas) {
+    offscreenCanvas.width = 0
+    offscreenCanvas.height = 0
+    offscreenCanvas = null
+  }
 })
 </script>
 

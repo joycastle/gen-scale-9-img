@@ -6,12 +6,11 @@ export function alphaBleeding(imageData: ImageData): ImageData {
   const N = width * height
   const image = new Uint8ClampedArray(imageData.data)
 
-  // opaque 状态标记:
-  //   -1 (0xFF) = 原始不透明像素，可作为颜色源 (& 1 === 1)
-  //   126       = 本轮刚填充，暂不作为颜色源 (& 1 === 0)
-  //   >>= 1 后变为 63，下轮可作为颜色源 (& 1 === 1)
-  const opaque = new Int8Array(N)
-  const loose = new Uint8Array(N) // 是否为"远离边界的透明像素"
+  // 像素状态标记（利用位运算判断是否可作为颜色源：state & 1 === 1 时可取色）
+  const STATE_OPAQUE = -1    // 原始不透明像素 (Int8 中为 0xFF, & 1 === 1)
+  const STATE_FILLED = 126   // 本轮刚填充 (& 1 === 0)，>>= 1 后变为 63 (& 1 === 1)
+  const pixelState = new Int8Array(N)
+  const loose = new Uint8Array(N) // 远离不透明边界的透明像素
 
   let pending: number[] = []
   let pendingNext: number[] = []
@@ -47,13 +46,13 @@ export function alphaBleeding(imageData: ImageData): ImageData {
         loose[i] = 1 // 远离边界，等后续轮次
       }
     } else {
-      opaque[i] = -1 // 0xFF，原始不透明
+      pixelState[i] = STATE_OPAQUE
     }
   }
 
   // BFS 逐层扩散
   while (pending.length > 0) {
-    pendingNext = []
+    pendingNext.length = 0
 
     for (const j of pending) {
       const x = j % width
@@ -67,8 +66,7 @@ export function alphaBleeding(imageData: ImageData): ImageData {
         const ny = y + dy
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
         const nIdx = ny * width + nx
-        // 仅从已确定的像素取色（opaque & 1 === 1）
-        if (opaque[nIdx] & 1) {
+        if (pixelState[nIdx] & 1) {
           const ni = nIdx * 4
           r += image[ni]
           g += image[ni + 1]
@@ -82,7 +80,7 @@ export function alphaBleeding(imageData: ImageData): ImageData {
         image[pi + 1] = (g / count) | 0
         image[pi + 2] = (b / count) | 0
         // alpha 保持为 0
-        opaque[j] = 126 // 本轮填充标记，& 1 === 0，>>= 1 后变为 63（& 1 === 1）
+        pixelState[j] = STATE_FILLED
 
         // 将相邻的 loose 像素加入下一轮
         for (const [dx, dy] of offsets) {
@@ -104,11 +102,11 @@ export function alphaBleeding(imageData: ImageData): ImageData {
     // 本轮填充的像素在下一轮变为可用颜色源
     if (pendingNext.length > 0) {
       for (const j of pending) {
-        opaque[j] >>= 1
+        pixelState[j] >>= 1
       }
     }
 
-    pending = pendingNext
+    ;[pending, pendingNext] = [pendingNext, pending]
   }
 
   return new ImageData(image, width, height)

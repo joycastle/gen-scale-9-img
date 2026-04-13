@@ -2,7 +2,8 @@ import type { SliceRegion } from '../types'
 import { getImageSize } from './sliceAlgorithm'
 import { alphaBleeding } from './alphaBleeding'
 
-const PADDING = 2
+/** .9.png 四周透明边距（像素） */
+export const SLICE9_PADDING = 2
 
 export function exportSlice9(
   image: HTMLImageElement | ImageBitmap,
@@ -18,22 +19,23 @@ export function exportSlice9(
   const topH = top + 1
   const bottomH = imgH - bottom
 
-  const outW = leftW + rightW + PADDING * 2
-  const outH = topH + bottomH + PADDING * 2
+  const outW = leftW + rightW + SLICE9_PADDING * 2
+  const outH = topH + bottomH + SLICE9_PADDING * 2
 
   const canvas = document.createElement('canvas')
   canvas.width = outW
   canvas.height = outH
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return Promise.reject(new Error('Failed to get 2D context'))
 
   // 左上角
-  ctx.drawImage(image, 0, 0, leftW, topH, PADDING, PADDING, leftW, topH)
+  ctx.drawImage(image, 0, 0, leftW, topH, SLICE9_PADDING, SLICE9_PADDING, leftW, topH)
   // 右上角
-  ctx.drawImage(image, right, 0, rightW, topH, leftW + PADDING, PADDING, rightW, topH)
+  ctx.drawImage(image, right, 0, rightW, topH, leftW + SLICE9_PADDING, SLICE9_PADDING, rightW, topH)
   // 左下角
-  ctx.drawImage(image, 0, bottom, leftW, bottomH, PADDING, topH + PADDING, leftW, bottomH)
+  ctx.drawImage(image, 0, bottom, leftW, bottomH, SLICE9_PADDING, topH + SLICE9_PADDING, leftW, bottomH)
   // 右下角
-  ctx.drawImage(image, right, bottom, rightW, bottomH, leftW + PADDING, topH + PADDING, rightW, bottomH)
+  ctx.drawImage(image, right, bottom, rightW, bottomH, leftW + SLICE9_PADDING, topH + SLICE9_PADDING, rightW, bottomH)
 
   if (enableAlphaBleeding) {
     const resultData = ctx.getImageData(0, 0, outW, outH)
@@ -43,6 +45,8 @@ export function exportSlice9(
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
+      canvas.width = 0
+      canvas.height = 0
       if (blob) resolve(blob)
       else reject(new Error('Failed to export PNG'))
     }, 'image/png')
@@ -54,6 +58,8 @@ export function downloadBlob(blob: Blob, filename: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  document.body.removeChild(a)
+  requestAnimationFrame(() => URL.revokeObjectURL(url))
 }

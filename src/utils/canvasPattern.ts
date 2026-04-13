@@ -4,7 +4,8 @@ function createCheckerCanvas(isDark: boolean): HTMLCanvasElement {
   const pc = document.createElement('canvas')
   pc.width = 16
   pc.height = 16
-  const pctx = pc.getContext('2d')!
+  const pctx = pc.getContext('2d')
+  if (!pctx) return pc
   if (isDark) {
     pctx.fillStyle = '#2d2d2d'
     pctx.fillRect(0, 0, 16, 16)

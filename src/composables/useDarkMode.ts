@@ -1,6 +1,16 @@
 import { ref } from 'vue'
 
 const isDark = ref(false)
+let mediaQuery: MediaQueryList | null = null
+
+function apply() {
+  document.documentElement.classList.toggle('dark', isDark.value)
+}
+
+function onSystemChange(e: MediaQueryListEvent) {
+  isDark.value = e.matches
+  apply()
+}
 
 export function useDarkMode() {
   function init() {
@@ -8,7 +18,9 @@ export function useDarkMode() {
     if (stored !== null) {
       isDark.value = stored === 'true'
     } else {
-      isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+      isDark.value = mediaQuery.matches
+      mediaQuery.addEventListener('change', onSystemChange)
     }
     apply()
   }
@@ -16,11 +28,11 @@ export function useDarkMode() {
   function toggle() {
     isDark.value = !isDark.value
     localStorage.setItem('slice9-dark', String(isDark.value))
+    if (mediaQuery) {
+      mediaQuery.removeEventListener('change', onSystemChange)
+      mediaQuery = null
+    }
     apply()
-  }
-
-  function apply() {
-    document.documentElement.classList.toggle('dark', isDark.value)
   }
 
   return { isDark, init, toggle }
